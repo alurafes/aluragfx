@@ -5,6 +5,6 @@
 Heavily based on the [Vulkan Tutorial](https://vulkan-tutorial.com/)
 
 ## TODO:
-- Refactor. Refactor. Refactor out of the main.c
+- even more refactor :P
 - Make a better build solution.
 - Everything else.
