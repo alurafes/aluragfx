@@ -32,6 +32,8 @@ typedef enum agfx_result_t {
     AGFX_PIPELINE_ERROR,
     AGFX_SYNC_OBJECT_ERROR,
     AGFX_VERTEX_BUFFER_ERROR,
+    AGFX_BUFFER_ERROR,
+    AGFX_BUFFER_COPY_ERROR
 } agfx_result_t;
 
 typedef struct agfx_queue_family_indices_t {
@@ -1321,51 +1323,134 @@ uint32_t find_vulkan_memory_type(agfx_engine_t *engine, uint32_t type_filter, Vk
     }
 }
 
-agfx_result_t create_vertex_buffer(agfx_engine_t *engine)
+agfx_result_t create_buffer(agfx_engine_t *engine, VkDeviceSize size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkBuffer* buffer, VkDeviceMemory* buffer_memory)
 {
     VkBufferCreateInfo buffer_create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(agfx_vertex_t) * AGFX_VERTEX_ARRAY_SIZE,
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .size = size,
+        .usage = usage_flags,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    if (VK_SUCCESS != vkCreateBuffer(engine->device, &buffer_create_info, NULL, &engine->vertex_buffer))
+    if (VK_SUCCESS != vkCreateBuffer(engine->device, &buffer_create_info, NULL, buffer))
     {
-        return AGFX_VERTEX_BUFFER_ERROR;
+        return AGFX_BUFFER_ERROR;
     }
 
     VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(engine->device, engine->vertex_buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(engine->device, *buffer, &memory_requirements);
 
     VkMemoryAllocateInfo memory_allocate_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .memoryTypeIndex = find_vulkan_memory_type(engine, memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+        .memoryTypeIndex = find_vulkan_memory_type(engine, memory_requirements.memoryTypeBits, property_flags),
         .allocationSize = memory_requirements.size
     };
 
-    if (VK_SUCCESS != vkAllocateMemory(engine->device, &memory_allocate_info, NULL, &engine->vertex_buffer_memory))
+    if (VK_SUCCESS != vkAllocateMemory(engine->device, &memory_allocate_info, NULL, buffer_memory))
     {
-        vkDestroyBuffer(engine->device, engine->vertex_buffer, NULL);
-        return AGFX_VERTEX_BUFFER_ERROR;
+        vkDestroyBuffer(engine->device, *buffer, NULL);
+        return AGFX_BUFFER_ERROR;
     }
 
-    if (VK_SUCCESS != vkBindBufferMemory(engine->device, engine->vertex_buffer, engine->vertex_buffer_memory, 0))
+    if (VK_SUCCESS != vkBindBufferMemory(engine->device, *buffer, *buffer_memory, 0))
     {
-        vkFreeMemory(engine->device, engine->vertex_buffer_memory, NULL);
-        vkDestroyBuffer(engine->device, engine->vertex_buffer, NULL);
-        return AGFX_VERTEX_BUFFER_ERROR;
+        vkFreeMemory(engine->device, *buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, *buffer, NULL);
+        return AGFX_BUFFER_ERROR;
+    }
+}
+
+agfx_result_t copy_buffer(agfx_engine_t *engine, VkBuffer src, VkBuffer dst, VkDeviceSize size) {
+    VkCommandBufferAllocateInfo command_buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool = engine->command_pool,
+        .commandBufferCount = 1
+    };
+
+    VkCommandBuffer command_buffer;
+    if (VK_SUCCESS != vkAllocateCommandBuffers(engine->device, &command_buffer_allocate_info, &command_buffer))
+    {
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (VK_SUCCESS != vkBeginCommandBuffer(command_buffer, &begin_info))
+    {
+        vkFreeCommandBuffers(engine->device, engine->command_pool, 1, &command_buffer);
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    VkBufferCopy buffer_copy = {
+        .size = size
+    };
+
+    vkCmdCopyBuffer(command_buffer, src, dst, 1, &buffer_copy);
+
+    vkEndCommandBuffer(command_buffer);
+    
+    VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer
+    };
+
+    if (VK_SUCCESS != vkQueueSubmit(engine->graphics_queue, 1, &submit_info, VK_NULL_HANDLE))
+    {
+        vkFreeCommandBuffers(engine->device, engine->command_pool, 1, &command_buffer);
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    if (VK_SUCCESS != vkQueueWaitIdle(engine->graphics_queue))
+    {
+        vkFreeCommandBuffers(engine->device, engine->command_pool, 1, &command_buffer);
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    vkFreeCommandBuffers(engine->device, engine->command_pool, 1, &command_buffer);
+    return AGFX_SUCCESS;
+}
+
+agfx_result_t create_vertex_buffer(agfx_engine_t *engine)
+{
+    agfx_result_t result;
+    size_t vertex_buffer_size = sizeof(agfx_vertex_t) * AGFX_VERTEX_ARRAY_SIZE;
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+
+    result = create_buffer(engine, vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        return result;
     }
 
     void* buffer;
-    if (VK_SUCCESS != vkMapMemory(engine->device, engine->vertex_buffer_memory, 0, buffer_create_info.size, 0, &buffer))
+    if (VK_SUCCESS != vkMapMemory(engine->device, staging_buffer_memory, 0, vertex_buffer_size, 0, &buffer))
     {
-        vkFreeMemory(engine->device, engine->vertex_buffer_memory, NULL);
-        vkDestroyBuffer(engine->device, engine->vertex_buffer, NULL);
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
         return AGFX_VERTEX_BUFFER_ERROR;
     }
-    memcpy(buffer, agfx_vertices, buffer_create_info.size);
-    vkUnmapMemory(engine->device, engine->vertex_buffer_memory);
+    memcpy(buffer, agfx_vertices, vertex_buffer_size);
+    vkUnmapMemory(engine->device, staging_buffer_memory);
+
+    result = create_buffer(engine, vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &engine->vertex_buffer, &engine->vertex_buffer_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
+        return result;
+    }
+
+    copy_buffer(engine, staging_buffer, engine->vertex_buffer, vertex_buffer_size);
+
+    vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+    vkDestroyBuffer(engine->device, staging_buffer, NULL);
 
     return AGFX_SUCCESS;
 }
