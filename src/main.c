@@ -32,6 +32,7 @@ typedef enum agfx_result_t {
     AGFX_PIPELINE_ERROR,
     AGFX_SYNC_OBJECT_ERROR,
     AGFX_VERTEX_BUFFER_ERROR,
+    AGFX_INDEX_BUFFER_ERROR,
     AGFX_BUFFER_ERROR,
     AGFX_BUFFER_COPY_ERROR
 } agfx_result_t;
@@ -79,6 +80,8 @@ typedef struct agfx_engine_t {
     uint32_t current_frame;
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    VkBuffer index_buffer;
+    VkDeviceMemory index_buffer_memory;
 } agfx_engine_t;
 
 typedef struct agfx_vector2_t {
@@ -123,10 +126,15 @@ const VkVertexInputAttributeDescription agfx_vertex_input_attribute_description[
 
 #define AGFX_VERTEX_ARRAY_SIZE 4
 const agfx_vertex_t agfx_vertices[AGFX_VERTEX_ARRAY_SIZE] = {
-    {{-0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{-0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {1.0f, 0.0f, 1.0f}},
-    {{0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {0.5f, 0.2f, 0.0f}},
+    {{0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.66f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+};
+
+#define AGFX_INDEX_ARRAY_SIZE 6
+const uint32_t agfx_indices[AGFX_INDEX_ARRAY_SIZE] = {
+    0, 1, 2, 2, 3, 0
 };
 
 uint32_t find_physical_device(agfx_engine_t* engine);
@@ -144,6 +152,7 @@ agfx_result_t create_sync_objects(agfx_engine_t *engine);
 agfx_result_t record_command_buffers(agfx_engine_t* engine, uint32_t image_index);
 agfx_result_t recreate_swapchain(agfx_engine_t *engine);
 agfx_result_t create_vertex_buffer(agfx_engine_t *engine);
+agfx_result_t create_index_buffer(agfx_engine_t *engine);
 
 agfx_result_t create_window(agfx_engine_t* engine)
 {
@@ -296,6 +305,12 @@ void free_vertex_buffer(agfx_engine_t *engine)
     vkFreeMemory(engine->device, engine->vertex_buffer_memory, NULL);
 }
 
+void free_index_buffer(agfx_engine_t *engine)
+{
+    vkDestroyBuffer(engine->device, engine->index_buffer, NULL);
+    vkFreeMemory(engine->device, engine->index_buffer_memory, NULL);
+}
+
 agfx_result_t agfx_initialize_engine(agfx_engine_t* pEngine)
 {
     SDL_Init(SDL_INIT_EVERYTHING);
@@ -344,9 +359,12 @@ agfx_result_t agfx_initialize_engine(agfx_engine_t* pEngine)
 
     result - create_vertex_buffer(&engine);
     if (AGFX_SUCCESS != result) goto free_command_pool;
+    
+    result - create_index_buffer(&engine);
+    if (AGFX_SUCCESS != result) goto free_vertex_buffer;
 
     result = create_command_buffers(&engine);
-    if (AGFX_SUCCESS != result) goto free_vertex_buffer;
+    if (AGFX_SUCCESS != result) goto free_index_buffer;
 
     result = create_sync_objects(&engine);
     if (AGFX_SUCCESS != result) goto free_command_buffers;
@@ -357,6 +375,8 @@ free_sync_objects:
     free_sync_objects(&engine);
 free_command_buffers:
     free_command_buffers(&engine);
+free_index_buffer:
+    free_index_buffer(&engine);
 free_vertex_buffer:
     free_vertex_buffer(&engine);
 free_command_pool:
@@ -390,6 +410,7 @@ void agfx_free_engine(agfx_engine_t* engine)
 {
     free_sync_objects(engine);
     free_command_buffers(engine);
+    free_index_buffer(engine);
     free_vertex_buffer(engine);
     free_command_pool(engine);
     free_framebuffers(engine);
@@ -1056,7 +1077,8 @@ agfx_result_t record_command_buffers(agfx_engine_t* engine, uint32_t image_index
     vkCmdBeginRenderPass(engine->command_buffers[engine->current_frame], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(engine->command_buffers[engine->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, engine->pipeline);
     vkCmdBindVertexBuffers(engine->command_buffers[engine->current_frame], 0, 1, &engine->vertex_buffer, &(VkDeviceSize){0});
-    vkCmdDraw(engine->command_buffers[engine->current_frame], AGFX_VERTEX_ARRAY_SIZE * sizeof(agfx_vertices[0]), 1, 0, 0);
+    vkCmdBindIndexBuffer(engine->command_buffers[engine->current_frame], engine->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(engine->command_buffers[engine->current_frame], AGFX_INDEX_ARRAY_SIZE, 1, 0, 0, 0);
     vkCmdEndRenderPass(engine->command_buffers[engine->current_frame]);
     vkEndCommandBuffer(engine->command_buffers[engine->current_frame]);
     
@@ -1140,7 +1162,7 @@ agfx_result_t create_pipeline(agfx_engine_t *engine)
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .primitiveRestartEnable = VK_FALSE
     };
 
@@ -1418,7 +1440,7 @@ agfx_result_t copy_buffer(agfx_engine_t *engine, VkBuffer src, VkBuffer dst, VkD
 agfx_result_t create_vertex_buffer(agfx_engine_t *engine)
 {
     agfx_result_t result;
-    size_t vertex_buffer_size = sizeof(agfx_vertex_t) * AGFX_VERTEX_ARRAY_SIZE;
+    size_t vertex_buffer_size = sizeof(agfx_vertices[0]) * AGFX_VERTEX_ARRAY_SIZE;
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
@@ -1447,7 +1469,63 @@ agfx_result_t create_vertex_buffer(agfx_engine_t *engine)
         return result;
     }
 
-    copy_buffer(engine, staging_buffer, engine->vertex_buffer, vertex_buffer_size);
+    result = copy_buffer(engine, staging_buffer, engine->vertex_buffer, vertex_buffer_size);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
+        vkFreeMemory(engine->device, engine->vertex_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, engine->vertex_buffer, NULL);
+        return result;
+    }
+
+    vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+    vkDestroyBuffer(engine->device, staging_buffer, NULL);
+
+    return AGFX_SUCCESS;
+}
+
+agfx_result_t create_index_buffer(agfx_engine_t *engine)
+{
+    agfx_result_t result;
+    size_t index_buffer_size = sizeof(agfx_indices[0]) * AGFX_INDEX_ARRAY_SIZE;
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+
+    result = create_buffer(engine, index_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        return result;
+    }
+
+    void* buffer;
+    if (VK_SUCCESS != vkMapMemory(engine->device, staging_buffer_memory, 0, index_buffer_size, 0, &buffer))
+    {
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
+        return AGFX_INDEX_BUFFER_ERROR;
+    }
+    memcpy(buffer, agfx_indices, index_buffer_size);
+    vkUnmapMemory(engine->device, staging_buffer_memory);
+
+    result = create_buffer(engine, index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &engine->index_buffer, &engine->index_buffer_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
+        return result;
+    }
+
+    result = copy_buffer(engine, staging_buffer, engine->index_buffer, index_buffer_size);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(engine->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, staging_buffer, NULL);
+        vkFreeMemory(engine->device, engine->index_buffer_memory, NULL);
+        vkDestroyBuffer(engine->device, engine->index_buffer, NULL);
+        return result;
+    }
 
     vkFreeMemory(engine->device, staging_buffer_memory, NULL);
     vkDestroyBuffer(engine->device, staging_buffer, NULL);
