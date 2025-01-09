@@ -10,7 +10,7 @@
 
 #define AGFX_VERTEX_ARRAY_SIZE 4
 static const agfx_vertex_t agfx_vertices[AGFX_VERTEX_ARRAY_SIZE] = {
-    {{-0.5f, -0.5f}, {0.5f, 0.2f, 0.0f}},
+    {{-0.5f, -0.5f}, {1.0f, 0.2f, 0.0f}},
     {{0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
     {{0.5f, 0.5f}, {0.0f, 0.66f, 1.0f}},
     {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
@@ -43,6 +43,9 @@ static const VkVertexInputAttributeDescription agfx_vertex_input_attribute_descr
     }
 };
 
+static agfx_result_t create_descriptor_set_layout(agfx_renderer_t *renderer);
+static agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer);
+static agfx_result_t create_descriptor_set(agfx_renderer_t *renderer);
 static agfx_result_t create_pipeline(agfx_renderer_t *renderer);
 static agfx_result_t create_render_pass(agfx_renderer_t *renderer);
 static agfx_result_t create_command_pool(agfx_renderer_t *renderer);
@@ -50,7 +53,11 @@ static agfx_result_t create_command_buffers(agfx_renderer_t *renderer);
 static agfx_result_t create_sync_objects(agfx_renderer_t *renderer);
 static agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer);
 static agfx_result_t create_index_buffer(agfx_renderer_t *renderer);
+static agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer);
 
+static void free_descriptor_set_layout(agfx_renderer_t *renderer);
+static void free_descriptor_pool(agfx_renderer_t *renderer);
+static void free_descriptor_set(agfx_renderer_t *renderer);
 static void free_pipeline(agfx_renderer_t *renderer);
 static void free_render_pass(agfx_renderer_t *renderer);
 static void free_command_pool(agfx_renderer_t *renderer);
@@ -58,7 +65,9 @@ static void free_command_buffers(agfx_renderer_t *renderer);
 static void free_sync_objects(agfx_renderer_t *renderer);
 static void free_vertex_buffer(agfx_renderer_t *renderer);
 static void free_index_buffer(agfx_renderer_t *renderer);
+static void free_uniform_buffers(agfx_renderer_t *renderer);
 
+void agfx_update_uniform_buffer(agfx_renderer_t *renderer);
 agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* swapchain, agfx_state_t* state, agfx_renderer_t* out_renderer);
 void agfx_free_renderer(agfx_renderer_t *renderer);
 agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t image_index);

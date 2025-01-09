@@ -4,6 +4,9 @@
 #include <vulkan/vulkan.h>
 #include <SDL2/SDL.h>
 
+#include "math/vector.h"
+#include "math/martix.h"
+
 typedef enum agfx_result_t {
     AGFX_SUCCESS = 0,
     AGFX_WINDOW_CREATE_ERROR,
@@ -27,7 +30,11 @@ typedef enum agfx_result_t {
     AGFX_VERTEX_BUFFER_ERROR,
     AGFX_INDEX_BUFFER_ERROR,
     AGFX_BUFFER_ERROR,
-    AGFX_BUFFER_COPY_ERROR
+    AGFX_BUFFER_COPY_ERROR,
+    AGFX_BUFFER_MAP_ERROR,
+    AGFX_DESCRIPTOR_SET_LAYOUT_ERROR,
+    AGFX_DESCRIPTOR_POOL_ERROR,
+    AGFX_DESCRIPTOR_SET_ERROR,
 } agfx_result_t;
 
 #define AGFX_QUEUE_FAMILY_INDICES_LENGTH sizeof(agfx_queue_family_indices_t) / sizeof(uint32_t)
@@ -98,6 +105,12 @@ typedef struct agfx_renderer_t {
     VkSemaphore *image_available_semaphores;
     VkSemaphore *render_finished_semaphores;
     VkFence *in_flight_fences;
+    VkBuffer* uniform_buffers;
+    VkDeviceMemory* uniform_buffer_memories;
+    void** uniform_buffer_mapped;
+    VkDescriptorSetLayout descriptor_set_layout;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSet* descriptor_sets;
 } agfx_renderer_t;
 
 typedef struct agfx_engine_t {
@@ -108,16 +121,11 @@ typedef struct agfx_engine_t {
     agfx_state_t state;
 } agfx_engine_t;
 
-typedef struct agfx_vector2_t {
-    float x;
-    float y;
-} agfx_vector2_t;
-
-typedef struct agfx_vector3_t {
-    float x;
-    float y;
-    float z;
-} agfx_vector3_t;
+typedef struct agfx_uniform_buffer_object_t {
+    agfx_mat4x4_t model;
+    agfx_mat4x4_t view;
+    agfx_mat4x4_t projection;
+} agfx_uniform_buffer_object_t;
 
 typedef struct agfx_vertex_t {
     agfx_vector2_t position;

@@ -1,5 +1,7 @@
 #include "renderer.h"
 
+#include "math/martix.h"
+
 agfx_result_t create_render_pass(agfx_renderer_t *renderer)
 {
     VkAttachmentDescription attachment_description = {
@@ -123,10 +125,13 @@ agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t im
     };
 
     vkCmdBeginRenderPass(renderer->command_buffers[renderer->state->current_frame], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+    
     vkCmdBindPipeline(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline);
     vkCmdBindVertexBuffers(renderer->command_buffers[renderer->state->current_frame], 0, 1, &renderer->vertex_buffer, &(VkDeviceSize){0});
     vkCmdBindIndexBuffer(renderer->command_buffers[renderer->state->current_frame], renderer->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindDescriptorSets(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline_layout, 0, 1, &renderer->descriptor_sets[renderer->state->current_frame], 0, NULL);
     vkCmdDrawIndexed(renderer->command_buffers[renderer->state->current_frame], AGFX_INDEX_ARRAY_SIZE, 1, 0, 0, 0);
+
     vkCmdEndRenderPass(renderer->command_buffers[renderer->state->current_frame]);
     vkEndCommandBuffer(renderer->command_buffers[renderer->state->current_frame]);
     
@@ -275,6 +280,8 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
 
     VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &renderer->descriptor_set_layout
     };
 
     if (VK_SUCCESS != vkCreatePipelineLayout(renderer->context->device, &pipeline_layout_create_info, NULL, &renderer->pipeline_layout))
@@ -435,7 +442,7 @@ agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst,
     vkCmdCopyBuffer(command_buffer, src, dst, 1, &buffer_copy);
 
     vkEndCommandBuffer(command_buffer);
-    
+
     VkSubmitInfo submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
@@ -554,6 +561,32 @@ agfx_result_t create_index_buffer(agfx_renderer_t *renderer)
     return AGFX_SUCCESS;
 }
 
+agfx_result_t create_descriptor_set_layout(agfx_renderer_t *renderer)
+{
+    VkDescriptorSetLayoutBinding ubo_layout_binding = {
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .binding = 0,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+    };
+
+    VkDescriptorSetLayoutCreateInfo ubo_layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &ubo_layout_binding
+    };
+
+    if (VK_SUCCESS != vkCreateDescriptorSetLayout(renderer->context->device, &ubo_layout_create_info, NULL, &renderer->descriptor_set_layout))
+    {
+        return AGFX_DESCRIPTOR_SET_LAYOUT_ERROR;
+    }
+
+}
+
+void free_descriptor_set_layout(agfx_renderer_t *renderer) 
+{
+    vkDestroyDescriptorSetLayout(renderer->context->device, renderer->descriptor_set_layout, NULL);
+}
 
 void free_pipeline(agfx_renderer_t *renderer) 
 {
@@ -607,8 +640,11 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
     renderer.swapchain = swapchain;
     renderer.state = state;
 
-    result = create_render_pass(&renderer);
+    result = create_descriptor_set_layout(&renderer);
     if (AGFX_SUCCESS != result) goto finish;
+
+    result = create_render_pass(&renderer);
+    if (AGFX_SUCCESS != result) goto free_descriptor_set_layout;
 
     result = create_pipeline(&renderer);
     if (AGFX_SUCCESS != result) goto free_render_pass;
@@ -616,14 +652,23 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
     result = create_command_pool(&renderer);
     if (AGFX_SUCCESS != result) goto free_pipeline;
 
-    result - create_vertex_buffer(&renderer);
+    result = create_vertex_buffer(&renderer);
     if (AGFX_SUCCESS != result) goto free_command_pool;
     
-    result - create_index_buffer(&renderer);
+    result = create_index_buffer(&renderer);
     if (AGFX_SUCCESS != result) goto free_vertex_buffer;
 
-    result = create_command_buffers(&renderer);
+    result = create_uniform_buffers(&renderer);
     if (AGFX_SUCCESS != result) goto free_index_buffer;
+
+    result = create_descriptor_pool(&renderer);
+    if (AGFX_SUCCESS != result) goto free_uniform_buffers;
+
+    result = create_descriptor_set(&renderer);
+    if (AGFX_SUCCESS != result) goto free_descriptor_pool;
+
+    result = create_command_buffers(&renderer);
+    if (AGFX_SUCCESS != result) goto free_descriptor_set;
 
     result = create_sync_objects(&renderer);
     if (AGFX_SUCCESS != result) goto free_command_buffers;
@@ -634,6 +679,12 @@ free_sync_objects:
     free_sync_objects(&renderer);
 free_command_buffers:
     free_command_buffers(&renderer);
+free_descriptor_set:
+    free_descriptor_set(&renderer);
+free_descriptor_pool:
+    free_descriptor_pool(&renderer);
+free_uniform_buffers:
+    free_uniform_buffers(&renderer);
 free_index_buffer:
     free_index_buffer(&renderer);
 free_vertex_buffer:
@@ -644,6 +695,8 @@ free_render_pass:
     free_render_pass(&renderer);
 free_pipeline:
     free_pipeline(&renderer);
+free_descriptor_set_layout:
+    free_descriptor_set_layout(&renderer);
 finish:
     *out_renderer = renderer;
     return result;
@@ -653,9 +706,164 @@ void agfx_free_renderer(agfx_renderer_t *renderer)
 {
     free_sync_objects(renderer);
     free_command_buffers(renderer);
+    free_descriptor_set(renderer);
+    free_descriptor_pool(renderer);
+    free_uniform_buffers(renderer);
     free_index_buffer(renderer);
     free_vertex_buffer(renderer);
     free_command_pool(renderer);
     free_render_pass(renderer);
     free_pipeline(renderer);
+    free_descriptor_set_layout(renderer);
+}
+
+// todo: refactor
+// todo: malloc result checks
+agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer)
+{
+    renderer->uniform_buffers = malloc(sizeof(VkBuffer) * AGFX_MAX_FRAMES_IN_FLIGHT);
+    renderer->uniform_buffer_memories = malloc(sizeof(VkDeviceMemory) * AGFX_MAX_FRAMES_IN_FLIGHT);
+    renderer->uniform_buffer_mapped = malloc(sizeof(void*) * AGFX_MAX_FRAMES_IN_FLIGHT);
+
+    agfx_result_t result = AGFX_SUCCESS;
+    for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        result = create_buffer(
+            renderer, 
+            sizeof(agfx_uniform_buffer_object_t), 
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+            &renderer->uniform_buffers[i], 
+            &renderer->uniform_buffer_memories[i]
+        );
+
+        if (AGFX_SUCCESS != result)
+        {
+            goto free;
+        }
+
+        if (VK_SUCCESS != vkMapMemory(renderer->context->device, renderer->uniform_buffer_memories[i], 0, sizeof(agfx_uniform_buffer_object_t), 0, &renderer->uniform_buffer_mapped[i]))
+        {
+            result = AGFX_BUFFER_MAP_ERROR;
+        }
+
+        if (result == AGFX_SUCCESS) goto finish;
+
+        free:
+        if (i > 0) {
+            for (size_t j = 0; j < i; ++j)
+            {
+                vkDestroyBuffer(renderer->context->device, renderer->uniform_buffers[j], NULL);
+                vkFreeMemory(renderer->context->device, renderer->uniform_buffer_memories[j], NULL);
+            }
+        }
+        free(renderer->uniform_buffers);
+        free(renderer->uniform_buffer_memories);
+        free(renderer->uniform_buffer_mapped);
+        return result;
+
+        finish:
+    }
+    return result;
+}
+
+void free_uniform_buffers(agfx_renderer_t *renderer)
+{
+    for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vkDestroyBuffer(renderer->context->device, renderer->uniform_buffers[i], NULL);
+        vkFreeMemory(renderer->context->device, renderer->uniform_buffer_memories[i], NULL);
+    }
+
+    free(renderer->uniform_buffers);
+    free(renderer->uniform_buffer_memories);
+    free(renderer->uniform_buffer_mapped);
+}
+
+void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
+{
+    agfx_uniform_buffer_object_t ubo = {
+        .model = agfx_mat4x4_create_diagonal(1.0f),
+        .view = agfx_mat4x4_create_diagonal(1.0f),
+        .projection = agfx_mat4x4_create_diagonal(1.0f),
+    };
+
+    memcpy(renderer->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));
+}
+
+agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer)
+{
+    VkDescriptorPoolSize descriptor_pool_size = {
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+    };
+
+    VkDescriptorPoolCreateInfo descriptor_pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .poolSizeCount = 1,
+        .pPoolSizes = &descriptor_pool_size,
+        .maxSets = AGFX_MAX_FRAMES_IN_FLIGHT
+    };
+
+    if (VK_SUCCESS != vkCreateDescriptorPool(renderer->context->device, &descriptor_pool_create_info, NULL, &renderer->descriptor_pool))
+    {
+        return AGFX_DESCRIPTOR_POOL_ERROR;
+    }
+
+    return AGFX_SUCCESS;
+}
+
+void free_descriptor_pool(agfx_renderer_t *renderer)
+{
+    vkDestroyDescriptorPool(renderer->context->device, renderer->descriptor_pool, NULL);
+}
+
+agfx_result_t create_descriptor_set(agfx_renderer_t *renderer)
+{
+    VkDescriptorSetLayout descriptor_set_layouts[AGFX_MAX_FRAMES_IN_FLIGHT] = {
+        renderer->descriptor_set_layout,
+        renderer->descriptor_set_layout
+    };
+
+    VkDescriptorSetAllocateInfo descriptor_set_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = renderer->descriptor_pool,
+        .descriptorSetCount = AGFX_MAX_FRAMES_IN_FLIGHT,
+        .pSetLayouts = descriptor_set_layouts
+    };
+
+    renderer->descriptor_sets = malloc(sizeof(VkDescriptorSet) * AGFX_MAX_FRAMES_IN_FLIGHT);
+
+    if (VK_SUCCESS != vkAllocateDescriptorSets(renderer->context->device, &descriptor_set_allocate_info, renderer->descriptor_sets))
+    {
+        free(renderer->descriptor_sets);
+        return AGFX_DESCRIPTOR_SET_ERROR;
+    }
+
+    for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo descriptor_buffer_info = {
+            .buffer = renderer->uniform_buffers[i],
+            .offset = 0,
+            .range = sizeof(agfx_uniform_buffer_object_t)
+        };
+
+        VkWriteDescriptorSet write_descriptor_set = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = renderer->descriptor_sets[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &descriptor_buffer_info,
+        };
+
+        vkUpdateDescriptorSets(renderer->context->device, 1, &write_descriptor_set, 0, NULL);
+    }
+
+    return AGFX_SUCCESS;
+}
+
+void free_descriptor_set(agfx_renderer_t *renderer)
+{
+    free(renderer->descriptor_sets);
 }

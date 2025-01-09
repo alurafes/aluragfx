@@ -42,6 +42,7 @@ void agfx_game_loop(agfx_engine_t* engine)
     result = vkAcquireNextImageKHR(engine->context.device, engine->swapchain.swapchain, UINT64_MAX, engine->renderer.image_available_semaphores[engine->state.current_frame], 0, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
+        printf("WE COOKIN\n");
         agfx_recreate_swapchain(&engine->swapchain);
         return;
     }
@@ -51,6 +52,9 @@ void agfx_game_loop(agfx_engine_t* engine)
     agfx_record_command_buffers(&engine->renderer, image_index);
 
     VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+    agfx_update_uniform_buffer(&engine->renderer);
+
     VkSubmitInfo submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = 1,
