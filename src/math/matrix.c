@@ -150,59 +150,6 @@ agfx_mat4x4_t agfx_mat4x4_rotation_euler(agfx_vector3_t rotation)
     rotation_matrix.mat[3].w = 1.0f;
 
     return rotation_matrix;
-
-    // float cos_of_x = cosf(rotation.x);
-    // float sin_of_x = sinf(rotation.x);
-    // float cos_of_y = cosf(rotation.y);
-    // float sin_of_y = sinf(rotation.y);
-    // float cos_of_z = cosf(rotation.z);
-    // float sin_of_z = sinf(rotation.z);
-
-    // agfx_mat4x4_t rotation_matrix = agfx_mat4x4_create_diagonal(0.0f);
-
-    // // Rotation around X
-    // agfx_mat4x4_t rotation_x = agfx_mat4x4_create_diagonal(0.0f);
-    // rotation_x.mat[0].x = 1.0f;
-    // rotation_x.mat[1].x = 0.0f;
-    // rotation_x.mat[2].x = 0.0f;
-    // rotation_x.mat[0].y = 0.0f;
-    // rotation_x.mat[1].y = cos_of_x;
-    // rotation_x.mat[2].y = -sin_of_x;
-    // rotation_x.mat[0].z = 0.0f;
-    // rotation_x.mat[1].z = sin_of_x;
-    // rotation_x.mat[2].z = cos_of_x;
-    // rotation_x.mat[3].w = 1.0f;
-
-    // // Rotation around Y
-    // agfx_mat4x4_t rotation_y = agfx_mat4x4_create_diagonal(0.0f);
-    // rotation_y.mat[0].x = cos_of_y;
-    // rotation_y.mat[1].x = 0.0f;
-    // rotation_y.mat[2].x = sin_of_y;
-    // rotation_y.mat[0].y = 0.0f;
-    // rotation_y.mat[1].y = 1.0f;
-    // rotation_y.mat[2].y = 0.0f;
-    // rotation_y.mat[0].z = -sin_of_y;
-    // rotation_y.mat[1].z = 0.0f;
-    // rotation_y.mat[2].z = cos_of_y;
-    // rotation_y.mat[3].w = 1.0f;
-
-    // // Rotation around Z
-    // agfx_mat4x4_t rotation_z = agfx_mat4x4_create_diagonal(0.0f);
-    // rotation_z.mat[0].x = cos_of_z;
-    // rotation_z.mat[1].x = -sin_of_z;
-    // rotation_z.mat[2].x = 0.0f;
-    // rotation_z.mat[0].y = sin_of_z;
-    // rotation_z.mat[1].y = cos_of_z;
-    // rotation_z.mat[2].y = 0.0f;
-    // rotation_z.mat[0].z = 0.0f;
-    // rotation_z.mat[1].z = 0.0f;
-    // rotation_z.mat[2].z = 1.0f;
-    // rotation_z.mat[3].w = 1.0f;
-
-    // // Combine the rotations
-    // rotation_matrix = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(rotation_z, rotation_y), rotation_x);
-
-    // return rotation_matrix;
 }
 
 agfx_mat4x4_t agfx_mat4x4_scale(agfx_vector3_t scale)
