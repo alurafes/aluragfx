@@ -9,7 +9,8 @@ agfx_result_t agfx_initialize_engine(agfx_engine_t* engine)
     engine->state = (agfx_state_t) {
         .current_frame = 0,
         .quit = 0,
-        .resized = 0
+        .resized = 0,
+        .rotation = 0
     };
 
     agfx_create_present(&engine->present);
@@ -42,7 +43,6 @@ void agfx_game_loop(agfx_engine_t* engine)
     result = vkAcquireNextImageKHR(engine->context.device, engine->swapchain.swapchain, UINT64_MAX, engine->renderer.image_available_semaphores[engine->state.current_frame], 0, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        printf("WE COOKIN\n");
         agfx_recreate_swapchain(&engine->swapchain);
         return;
     }
@@ -104,6 +104,32 @@ void agfx_main(agfx_engine_t* engine)
             if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
             {
                 engine->state.resized = 1;
+            }
+            goto event_switch_end;
+        case SDL_KEYDOWN:
+            if (event.key.keysym.sym == SDLK_LEFT) {
+                printf("z = %f\n", engine->state.rotation.z);
+                engine->state.rotation.z -= 0.02;
+            }
+            if (event.key.keysym.sym == SDLK_RIGHT) {
+                 printf("z = %f\n", engine->state.rotation.z);
+                engine->state.rotation.z += 0.02;
+            }
+            if (event.key.keysym.sym == SDLK_UP) {
+                printf("y = %f\n", engine->state.rotation.y);
+                engine->state.rotation.y -= 0.02;
+            }
+            if (event.key.keysym.sym == SDLK_DOWN) {
+                 printf("y = %f\n", engine->state.rotation.y);
+                engine->state.rotation.y += 0.02;
+            }
+            if (event.key.keysym.sym == SDLK_PAGEUP) {
+                printf("x = %f\n", engine->state.rotation.x);
+                engine->state.rotation.x -= 0.02;
+            }
+            if (event.key.keysym.sym == SDLK_PAGEDOWN) {
+                 printf("x = %f\n", engine->state.rotation.x);
+                engine->state.rotation.x += 0.02;
             }
             goto event_switch_end;
         }

@@ -87,6 +87,7 @@ typedef struct agfx_state_t {
     uint32_t quit;
     uint32_t resized;
     uint32_t current_frame;
+    agfx_vector3_t rotation;
 } agfx_state_t;
 
 typedef struct agfx_renderer_t {

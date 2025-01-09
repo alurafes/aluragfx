@@ -125,12 +125,29 @@ agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t im
     };
 
     vkCmdBeginRenderPass(renderer->command_buffers[renderer->state->current_frame], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)renderer->swapchain->swapchain_extent.width,
+        .height = (float)renderer->swapchain->swapchain_extent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
     
+    VkRect2D scissor = {
+        .extent = renderer->swapchain->swapchain_extent,
+        .offset = {0, 0}
+    };
+
+    vkCmdSetViewport(renderer->command_buffers[renderer->state->current_frame], 0, 1, &viewport);
+    vkCmdSetScissor(renderer->command_buffers[renderer->state->current_frame], 0, 1, &scissor);
     vkCmdBindPipeline(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline);
     vkCmdBindVertexBuffers(renderer->command_buffers[renderer->state->current_frame], 0, 1, &renderer->vertex_buffer, &(VkDeviceSize){0});
     vkCmdBindIndexBuffer(renderer->command_buffers[renderer->state->current_frame], renderer->index_buffer, 0, VK_INDEX_TYPE_UINT32);
     vkCmdBindDescriptorSets(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline_layout, 0, 1, &renderer->descriptor_sets[renderer->state->current_frame], 0, NULL);
     vkCmdDrawIndexed(renderer->command_buffers[renderer->state->current_frame], AGFX_INDEX_ARRAY_SIZE, 1, 0, 0, 0);
+
 
     vkCmdEndRenderPass(renderer->command_buffers[renderer->state->current_frame]);
     vkEndCommandBuffer(renderer->command_buffers[renderer->state->current_frame]);
@@ -219,28 +236,6 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         .primitiveRestartEnable = VK_FALSE
     };
 
-    VkViewport viewport = {
-        .x = 0.0f,
-        .y = 0.0f,
-        .width = (float)renderer->swapchain->swapchain_extent.width,
-        .height = (float)renderer->swapchain->swapchain_extent.height,
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f
-    };
-
-    VkRect2D scissor = {
-        .extent = renderer->swapchain->swapchain_extent,
-        .offset = {0, 0}
-    };
-
-    VkPipelineViewportStateCreateInfo viewport_state_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .viewportCount = 1,
-        .pViewports = &viewport,
-        .scissorCount = 1,
-        .pScissors = &scissor,
-    };
-
     VkPipelineRasterizationStateCreateInfo rasterization_state_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_FALSE,
@@ -293,6 +288,18 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         return AGFX_PIPELINE_ERROR;
     }
 
+    #define AGFX_DYNAMIC_STATE_COUNT 2 
+    VkDynamicState dynamic_state[AGFX_DYNAMIC_STATE_COUNT] = {
+        VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+        VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
+    };
+
+    VkPipelineDynamicStateCreateInfo pipeline_dynamic_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = AGFX_DYNAMIC_STATE_COUNT,
+        .pDynamicStates = dynamic_state,
+    };
+
     VkGraphicsPipelineCreateInfo pipeline_create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
@@ -305,7 +312,7 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         .layout = renderer->pipeline_layout,
         .renderPass = renderer->render_pass,
         .subpass = 0,
-        .pViewportState = &viewport_state_create_info,
+        .pDynamicState = &pipeline_dynamic_create_info,
     };
 
     if (VK_SUCCESS != vkCreateGraphicsPipelines(renderer->context->device, 0, 1, &pipeline_create_info, NULL, &renderer->pipeline))
@@ -783,7 +790,7 @@ void free_uniform_buffers(agfx_renderer_t *renderer)
 void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
 {
     agfx_uniform_buffer_object_t ubo = {
-        .model = agfx_mat4x4_create_diagonal(1.0f),
+        .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 0.5f, .y = 0.5f, .z = 0.5f})),
         .view = agfx_mat4x4_create_diagonal(1.0f),
         .projection = agfx_mat4x4_create_diagonal(1.0f),
     };

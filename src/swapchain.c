@@ -121,6 +121,7 @@ agfx_result_t create_swapchain(agfx_swapchain_t *swapchain)
         free(swapchain->swapchain_images);
         return AGFX_SWAPCHAIN_ERROR;
     }
+
     swapchain->swapchain_format = surface_format.format;
     swapchain->swapchain_extent = extent;
 
@@ -150,7 +151,7 @@ agfx_result_t create_swapchain_image_views(agfx_swapchain_t *swapchain)
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
             .format = swapchain->swapchain_format,
             .components = components,
-            .subresourceRange =  subresource_range,
+            .subresourceRange = subresource_range,
             .image = swapchain->swapchain_images[i],
         };
         if (VK_SUCCESS != vkCreateImageView(swapchain->context->device, &image_view_create_info, NULL, &swapchain->swapchain_image_views[i]))
@@ -262,6 +263,9 @@ agfx_result_t agfx_recreate_swapchain(agfx_swapchain_t *swapchain)
     free_swapchain(swapchain);
 
     agfx_result_t result = AGFX_SUCCESS;
+
+    result = populate_swapchain_info(swapchain);
+    if (AGFX_SUCCESS != result) return result;
 
     result = create_swapchain(swapchain);
     if (AGFX_SUCCESS != result) return result;
