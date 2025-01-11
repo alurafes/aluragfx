@@ -2,6 +2,8 @@
 #define AGFX_RENDERER_H
 
 #include "engine_types.h"
+#include "helper.h"
+
 #include <sys/stat.h>
 #include <stdio.h>
 #include <vulkan/vulkan.h>
@@ -10,17 +12,26 @@
 #define AGFX_MAX_FRAMES_IN_FLIGHT 2
 #define AGFX_DESCRIPTOR_COUNT 2
 
-#define AGFX_VERTEX_ARRAY_SIZE 4
+#define AGFX_VERTEX_ARRAY_SIZE 8
 static const agfx_vertex_t agfx_vertices[AGFX_VERTEX_ARRAY_SIZE] = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+    {{-1, -1, -1}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{1, -1, -1}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{1, 1, -1}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-1, 1, -1}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-1, -1, 1}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{1, -1, 1}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{1, 1, 1}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{-1, 1, 1}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
 };
 
-#define AGFX_INDEX_ARRAY_SIZE 6
+#define AGFX_INDEX_ARRAY_SIZE 36
 static const uint32_t agfx_indices[AGFX_INDEX_ARRAY_SIZE] = {
-    0, 1, 2, 2, 3, 0
+    0, 1, 3, 3, 1, 2,
+    1, 5, 2, 2, 5, 6,
+    5, 4, 6, 6, 4, 7,
+    4, 0, 7, 7, 0, 3,
+    3, 2, 7, 7, 2, 6,
+    4, 5, 0, 0, 5, 1
 };
 
 static const VkVertexInputBindingDescription agfx_vertex_input_binding_description = {
@@ -65,15 +76,6 @@ static agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer);
 static agfx_result_t create_texture_image(agfx_renderer_t *renderer);
 static agfx_result_t create_texture_image_view(agfx_renderer_t *renderer);
 static agfx_result_t create_texture_sampler(agfx_renderer_t *renderer);
-
-static agfx_result_t command_buffer_end(agfx_renderer_t *renderer, VkCommandBuffer *command_buffer);
-static agfx_result_t command_buffer_begin(agfx_renderer_t *renderer, VkCommandBuffer* command_buffer);
-static agfx_result_t create_buffer(agfx_renderer_t *renderer, VkDeviceSize size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkBuffer* buffer, VkDeviceMemory* buffer_memory);
-static agfx_result_t create_image(agfx_renderer_t *renderer, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkImage* image, VkDeviceMemory* image_memory);
-static agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst, VkDeviceSize size);
-static agfx_result_t copy_buffer_to_image(agfx_renderer_t *renderer, VkBuffer src, VkImage dst, uint32_t width, uint32_t height);
-
-static agfx_result_t transition_image_layout(agfx_renderer_t *renderer, VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
 
 static void free_descriptor_set_layout(agfx_renderer_t *renderer);
 static void free_descriptor_pool(agfx_renderer_t *renderer);

@@ -7,6 +7,8 @@
 #include "math/vector.h"
 #include "math/martix.h"
 
+#define AGFX_ATTACHMENT_ARRAY_SIZE 2 // temp
+
 typedef enum agfx_result_t {
     AGFX_SUCCESS = 0,
     AGFX_WINDOW_CREATE_ERROR,
@@ -85,6 +87,9 @@ typedef struct agfx_swapchain_t {
     VkFormat swapchain_format;
     VkExtent2D swapchain_extent;
     VkFramebuffer* framebuffers;
+    VkImage depth_image;
+    VkDeviceMemory depth_image_memory;
+    VkImageView depth_image_view;
 } agfx_swapchain_t;
 
 typedef struct agfx_state_t {

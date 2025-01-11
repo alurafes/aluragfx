@@ -10,6 +10,7 @@ test:
 	./src/swapchain.c \
 	./src/renderer.c \
 	./src/utils.c \
+	./src/helper.c \
 	./src/math/matrix.c \
 	./src/math/vector.c \
 	-g \

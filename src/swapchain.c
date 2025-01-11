@@ -154,7 +154,7 @@ agfx_result_t create_swapchain_image_views(agfx_swapchain_t *swapchain)
             .subresourceRange = subresource_range,
             .image = swapchain->swapchain_images[i],
         };
-        if (VK_SUCCESS != vkCreateImageView(swapchain->context->device, &image_view_create_info, NULL, &swapchain->swapchain_image_views[i]))
+        if (VK_SUCCESS != vkCreateImageView(swapchain->context->device, &image_view_create_info, NULL, &swapchain->swapchain_image_views[i])) // todo: refactor image view creation and use the same function everywhere
         {
             free(swapchain->swapchain_image_views);
             return AGFX_SWAPCHAIN_IMAGE_VIEW_ERROR;
@@ -168,14 +168,19 @@ agfx_result_t create_framebuffers(agfx_swapchain_t *swapchain)
     swapchain->framebuffers = (VkFramebuffer*)malloc(sizeof(VkFramebuffer) * swapchain->swapchain_images_count);
     for (int i = 0; i < swapchain->swapchain_images_count; ++i)
     {
+        VkImageView image_views[AGFX_ATTACHMENT_ARRAY_SIZE] = {
+            swapchain->swapchain_image_views[i],
+            swapchain->depth_image_view
+        };
+
         VkFramebufferCreateInfo framebuffer_create_info = {
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = swapchain->renderer->render_pass,
             .width = swapchain->swapchain_extent.width,
             .height = swapchain->swapchain_extent.height,
             .layers = 1,
-            .attachmentCount = 1,
-            .pAttachments = &swapchain->swapchain_image_views[i]
+            .attachmentCount = AGFX_ATTACHMENT_ARRAY_SIZE,
+            .pAttachments = image_views
         };
 
         if (VK_SUCCESS != vkCreateFramebuffer(swapchain->context->device, &framebuffer_create_info, NULL, &swapchain->framebuffers[i]))
@@ -248,6 +253,7 @@ finish:
 
 void agfx_free_swapchain(agfx_swapchain_t* swapchain)
 {
+    free_depth_resources(swapchain);
     free_framebuffers(swapchain);
     free_swapchain_image_views(swapchain);
     free_swapchain(swapchain);
@@ -258,6 +264,7 @@ agfx_result_t agfx_recreate_swapchain(agfx_swapchain_t *swapchain)
 {
     vkDeviceWaitIdle(swapchain->context->device);
     
+    free_depth_resources(swapchain);
     free_framebuffers(swapchain);
     free_swapchain_image_views(swapchain);
     free_swapchain(swapchain);
@@ -276,8 +283,15 @@ agfx_result_t agfx_recreate_swapchain(agfx_swapchain_t *swapchain)
         return result;
     }
 
+    result = create_depth_resources(swapchain);
+    if (AGFX_SUCCESS != result) {
+        free_swapchain_image_views(swapchain);
+        free_swapchain(swapchain);
+    }
+
     result = create_framebuffers(swapchain);
     if (AGFX_SUCCESS != result) {
+        free_depth_resources(swapchain);
         free_swapchain_image_views(swapchain);
         free_swapchain(swapchain);
     }
@@ -287,5 +301,43 @@ agfx_result_t agfx_recreate_swapchain(agfx_swapchain_t *swapchain)
 
 agfx_result_t agfx_create_framebuffers(agfx_swapchain_t *swapchain)
 {
-    return create_framebuffers(swapchain);
+    agfx_result_t result = AGFX_SUCCESS;
+
+    result = create_depth_resources(swapchain);
+    if (AGFX_SUCCESS != result) {
+        free_swapchain_image_views(swapchain);
+        free_swapchain(swapchain);
+    }
+
+    result = create_framebuffers(swapchain);
+    if (AGFX_SUCCESS != result) {
+        free_depth_resources(swapchain);
+        free_swapchain_image_views(swapchain);
+        free_swapchain(swapchain);
+    }
+}
+
+agfx_result_t create_depth_resources(agfx_swapchain_t *swapchain)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+
+    result = agfx_helper_create_image(swapchain->context, swapchain->swapchain_extent.width, swapchain->swapchain_extent.height, VK_FORMAT_D32_SFLOAT, VK_IMAGE_TILING_OPTIMAL,VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &swapchain->depth_image, &swapchain->depth_image_memory);
+    if (AGFX_SUCCESS != result) return result;
+
+    result = agfx_helper_create_image_view(swapchain->context, swapchain->depth_image, VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT, &swapchain->depth_image_view);
+    if (AGFX_SUCCESS != result)
+    {
+        vkDestroyImage(swapchain->context->device, swapchain->depth_image, NULL);
+        vkFreeMemory(swapchain->context->device, swapchain->depth_image_memory, NULL);
+        return result;
+    }
+
+    return result;
+}
+
+void free_depth_resources(agfx_swapchain_t *swapchain)
+{
+    vkDestroyImageView(swapchain->context->device, swapchain->depth_image_view, NULL);
+    vkDestroyImage(swapchain->context->device, swapchain->depth_image, NULL);
+    vkFreeMemory(swapchain->context->device, swapchain->depth_image_memory, NULL);
 }

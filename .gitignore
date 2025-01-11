@@ -3,3 +3,4 @@ shaders/*.spv
 main.exe
 SDL2.dll
 SDL2_image.dll
+textures/makoto.jpg
