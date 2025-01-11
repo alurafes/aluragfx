@@ -1,6 +1,6 @@
 #include "present.h"
 
-#define AGFX_WINDOW_WIDTH 1000
+#define AGFX_WINDOW_WIDTH 1600
 #define AGFX_WINDOW_HEIGHT 900
 
 agfx_result_t agfx_create_present(agfx_present_t* out_present)

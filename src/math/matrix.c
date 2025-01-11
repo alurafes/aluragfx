@@ -1,6 +1,7 @@
 #include "math/martix.h"
 
 #include <math.h>
+#define M_PI 3.14159265358979323846
 
 agfx_mat2x2_t agfx_mat2x2_create_diagonal(float value)
 {
@@ -161,4 +162,36 @@ agfx_mat4x4_t agfx_mat4x4_scale(agfx_vector3_t scale)
     scale_matrix.mat[2].z = scale.z;
 
     return scale_matrix;
+}
+
+agfx_mat4x4_t agfx_mat4x4_look_at(agfx_vector3_t camera, agfx_vector3_t subject, agfx_vector3_t up)
+{
+    agfx_vector3_t z_axis = agfx_vector3_normalize(agfx_vector3_subtract_vector3(camera, subject));
+    agfx_vector3_t x_axis = agfx_vector3_normalize(agfx_vector3_cross(up, z_axis));
+    agfx_vector3_t y_axis = agfx_vector3_cross(z_axis, x_axis);
+
+    return (agfx_mat4x4_t) {
+        .mat = {
+            {x_axis.x, y_axis.x, z_axis.x, 0.0f},
+            {x_axis.y, y_axis.y, z_axis.y, 0.0f},
+            {x_axis.z, y_axis.z, z_axis.z, 0.0f},
+            {-agfx_vector3_dot(x_axis, camera), -agfx_vector3_dot(y_axis, camera), -agfx_vector3_dot(z_axis, camera), 1.0f}
+        }
+    };
+}
+
+agfx_mat4x4_t agfx_mat4x4_perspective(float fov, float aspect_ratio, float z_near, float z_far)
+{
+    float S = 1.0f / tanf(fov * 0.5f);
+    float scale_x = S / aspect_ratio;
+    float scale_y = S;
+
+    return (agfx_mat4x4_t) {
+        .mat = {
+            {scale_x, 0.0f, 0.0f, 0.0f},
+            {0.0f, -scale_y, 0.0f, 0.0f},
+            {0.0f, 0.0f, -(z_far + z_near) / (z_far - z_near), -1.0f},
+            {0.0f, 0.0f, -(2.0f * z_far * z_near) / (z_far - z_near), 0.0f}
+        }
+    };
 }

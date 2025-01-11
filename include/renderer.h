@@ -10,9 +10,9 @@
 
 #define AGFX_VERTEX_ARRAY_SIZE 4
 static const agfx_vertex_t agfx_vertices[AGFX_VERTEX_ARRAY_SIZE] = {
-    {{-0.5f, -0.5f}, {1.0f, 0.2f, 0.0f}},
-    {{0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.66f, 1.0f}},
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
     {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 };
 

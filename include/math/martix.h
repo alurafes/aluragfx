@@ -31,4 +31,7 @@ agfx_mat4x4_t agfx_mat4x4_translation(agfx_vector3_t position);
 agfx_mat4x4_t agfx_mat4x4_rotation_euler(agfx_vector3_t rotation);
 agfx_mat4x4_t agfx_mat4x4_scale(agfx_vector3_t scale);
 
+agfx_mat4x4_t agfx_mat4x4_look_at(agfx_vector3_t camera, agfx_vector3_t subject, agfx_vector3_t up);
+agfx_mat4x4_t agfx_mat4x4_perspective(float fov, float aspect_ratio, float z_near, float z_far);
+
 #endif

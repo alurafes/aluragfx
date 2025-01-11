@@ -111,7 +111,7 @@ agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t im
 
     VkClearValue clear_value = {
         .color = {
-            .float32 = {0.0, 0.0, 0.0, 1.0}
+            .float32 = {0.2f, 0.2f, 0.2f, 1.0f}
         }
     };
 
@@ -242,7 +242,7 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         .rasterizerDiscardEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL, // FUN
         .lineWidth = 1.0f,
-        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .cullMode = VK_CULL_MODE_NONE,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE
     };
@@ -787,12 +787,18 @@ void free_uniform_buffers(agfx_renderer_t *renderer)
     free(renderer->uniform_buffer_mapped);
 }
 
+// agfx_mat4x4_create_diagonal(1.0f),
+// agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
+// agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
+// agfx_mat4x4_perspective(90.0f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
 void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
 {
+
+    agfx_mat4x4_t test = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f});
     agfx_uniform_buffer_object_t ubo = {
-        .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 0.5f, .y = 0.5f, .z = 0.5f})),
-        .view = agfx_mat4x4_create_diagonal(1.0f),
-        .projection = agfx_mat4x4_create_diagonal(1.0f),
+        .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
+        .view = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
+        .projection = agfx_mat4x4_perspective(45.0f * M_PI / 180.f, 16.f / 9.f, 0.1f, 10.0f)
     };
 
     memcpy(renderer->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));
