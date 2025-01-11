@@ -276,7 +276,8 @@ agfx_result_t create_logical_device(agfx_context_t* context)
     const char* enabledExtensionName = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
     VkPhysicalDeviceFeatures deviceFeatures = {
-        .geometryShader = VK_TRUE
+        .geometryShader = VK_TRUE,
+        .samplerAnisotropy = VK_TRUE
     };
 
     VkDeviceCreateInfo device_create_info = {

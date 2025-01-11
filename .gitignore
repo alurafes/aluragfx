@@ -2,3 +2,4 @@ shaders/*.spv
 .vscode
 main.exe
 SDL2.dll
+SDL2_image.dll

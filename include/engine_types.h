@@ -35,6 +35,10 @@ typedef enum agfx_result_t {
     AGFX_DESCRIPTOR_SET_LAYOUT_ERROR,
     AGFX_DESCRIPTOR_POOL_ERROR,
     AGFX_DESCRIPTOR_SET_ERROR,
+    AGFX_IMAGE_LOAD_ERROR,
+    AGFX_IMAGE_CREATE_ERROR,
+    AGFX_UNSUPPORTED_LAYOUT_TRANSITION_ERROR,
+    AGFX_SAMPLER_CREATE_ERROR,
 } agfx_result_t;
 
 #define AGFX_QUEUE_FAMILY_INDICES_LENGTH sizeof(agfx_queue_family_indices_t) / sizeof(uint32_t)
@@ -112,6 +116,10 @@ typedef struct agfx_renderer_t {
     VkDescriptorSetLayout descriptor_set_layout;
     VkDescriptorPool descriptor_pool;
     VkDescriptorSet* descriptor_sets;
+    VkImage texture_image;
+    VkDeviceMemory texture_image_memory;
+    VkImageView texture_image_view;
+    VkSampler texture_sampler;
 } agfx_renderer_t;
 
 typedef struct agfx_engine_t {
@@ -129,8 +137,9 @@ typedef struct agfx_uniform_buffer_object_t {
 } agfx_uniform_buffer_object_t;
 
 typedef struct agfx_vertex_t {
-    agfx_vector2_t position;
+    agfx_vector3_t position;
     agfx_vector3_t color;
+    agfx_vector2_t texture_coordinate;
 } agfx_vertex_t;
 
 #endif

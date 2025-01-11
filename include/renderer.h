@@ -5,15 +5,17 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <vulkan/vulkan.h>
+#include <SDL2/SDL_image.h>
 
 #define AGFX_MAX_FRAMES_IN_FLIGHT 2
+#define AGFX_DESCRIPTOR_COUNT 2
 
 #define AGFX_VERTEX_ARRAY_SIZE 4
 static const agfx_vertex_t agfx_vertices[AGFX_VERTEX_ARRAY_SIZE] = {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 };
 
 #define AGFX_INDEX_ARRAY_SIZE 6
@@ -27,25 +29,31 @@ static const VkVertexInputBindingDescription agfx_vertex_input_binding_descripti
     .stride = sizeof(agfx_vertex_t)
 };
 
-#define AGFX_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_SIZE 2
+#define AGFX_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_SIZE 3
 static const VkVertexInputAttributeDescription agfx_vertex_input_attribute_description[AGFX_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_SIZE] = {
-    (VkVertexInputAttributeDescription) {
+    {
         .binding = 0,
         .location = 0,
-        .format = VK_FORMAT_R32G32_SFLOAT,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
         .offset = offsetof(agfx_vertex_t, position)
     },
-    (VkVertexInputAttributeDescription) {
+    {
         .binding = 0,
         .location = 1,
         .format = VK_FORMAT_R32G32B32_SFLOAT,
         .offset = offsetof(agfx_vertex_t, color)
+    },
+    {
+        .binding = 0,
+        .location = 2,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(agfx_vertex_t, texture_coordinate)
     }
 };
 
 static agfx_result_t create_descriptor_set_layout(agfx_renderer_t *renderer);
 static agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer);
-static agfx_result_t create_descriptor_set(agfx_renderer_t *renderer);
+static agfx_result_t create_descriptor_sets(agfx_renderer_t *renderer);
 static agfx_result_t create_pipeline(agfx_renderer_t *renderer);
 static agfx_result_t create_render_pass(agfx_renderer_t *renderer);
 static agfx_result_t create_command_pool(agfx_renderer_t *renderer);
@@ -54,10 +62,22 @@ static agfx_result_t create_sync_objects(agfx_renderer_t *renderer);
 static agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer);
 static agfx_result_t create_index_buffer(agfx_renderer_t *renderer);
 static agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer);
+static agfx_result_t create_texture_image(agfx_renderer_t *renderer);
+static agfx_result_t create_texture_image_view(agfx_renderer_t *renderer);
+static agfx_result_t create_texture_sampler(agfx_renderer_t *renderer);
+
+static agfx_result_t command_buffer_end(agfx_renderer_t *renderer, VkCommandBuffer *command_buffer);
+static agfx_result_t command_buffer_begin(agfx_renderer_t *renderer, VkCommandBuffer* command_buffer);
+static agfx_result_t create_buffer(agfx_renderer_t *renderer, VkDeviceSize size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkBuffer* buffer, VkDeviceMemory* buffer_memory);
+static agfx_result_t create_image(agfx_renderer_t *renderer, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkImage* image, VkDeviceMemory* image_memory);
+static agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst, VkDeviceSize size);
+static agfx_result_t copy_buffer_to_image(agfx_renderer_t *renderer, VkBuffer src, VkImage dst, uint32_t width, uint32_t height);
+
+static agfx_result_t transition_image_layout(agfx_renderer_t *renderer, VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
 
 static void free_descriptor_set_layout(agfx_renderer_t *renderer);
 static void free_descriptor_pool(agfx_renderer_t *renderer);
-static void free_descriptor_set(agfx_renderer_t *renderer);
+static void free_descriptor_sets(agfx_renderer_t *renderer);
 static void free_pipeline(agfx_renderer_t *renderer);
 static void free_render_pass(agfx_renderer_t *renderer);
 static void free_command_pool(agfx_renderer_t *renderer);
@@ -66,6 +86,9 @@ static void free_sync_objects(agfx_renderer_t *renderer);
 static void free_vertex_buffer(agfx_renderer_t *renderer);
 static void free_index_buffer(agfx_renderer_t *renderer);
 static void free_uniform_buffers(agfx_renderer_t *renderer);
+static void free_texture_image(agfx_renderer_t *renderer);
+static void free_texture_image_view(agfx_renderer_t *renderer);
+static void free_texture_sampler(agfx_renderer_t *renderer);
 
 void agfx_update_uniform_buffer(agfx_renderer_t *renderer);
 agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* swapchain, agfx_state_t* state, agfx_renderer_t* out_renderer);

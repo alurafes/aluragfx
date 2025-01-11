@@ -134,14 +134,18 @@ agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t im
         .minDepth = 0.0f,
         .maxDepth = 1.0f
     };
+
+    uint32_t viewport_count = 1;
     
     VkRect2D scissor = {
         .extent = renderer->swapchain->swapchain_extent,
         .offset = {0, 0}
     };
 
-    vkCmdSetViewport(renderer->command_buffers[renderer->state->current_frame], 0, 1, &viewport);
-    vkCmdSetScissor(renderer->command_buffers[renderer->state->current_frame], 0, 1, &scissor);
+    uint32_t scissor_count = 1;
+
+    vkCmdSetViewportWithCount(renderer->command_buffers[renderer->state->current_frame], viewport_count, &viewport);
+    vkCmdSetScissorWithCount(renderer->command_buffers[renderer->state->current_frame], scissor_count, &scissor);
     vkCmdBindPipeline(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline);
     vkCmdBindVertexBuffers(renderer->command_buffers[renderer->state->current_frame], 0, 1, &renderer->vertex_buffer, &(VkDeviceSize){0});
     vkCmdBindIndexBuffer(renderer->command_buffers[renderer->state->current_frame], renderer->index_buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -273,6 +277,15 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f}
     };
 
+    VkPipelineViewportStateCreateInfo viewport_state_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .pNext = NULL,
+        .viewportCount = 0,
+        .pViewports = NULL,
+        .scissorCount = 0, 
+        .pScissors = NULL,
+    };
+
     VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
@@ -313,6 +326,7 @@ agfx_result_t create_pipeline(agfx_renderer_t *renderer)
         .renderPass = renderer->render_pass,
         .subpass = 0,
         .pDynamicState = &pipeline_dynamic_create_info,
+        .pViewportState = &viewport_state_create_info,
     };
 
     if (VK_SUCCESS != vkCreateGraphicsPipelines(renderer->context->device, 0, 1, &pipeline_create_info, NULL, &renderer->pipeline))
@@ -417,7 +431,8 @@ agfx_result_t create_buffer(agfx_renderer_t *renderer, VkDeviceSize size, VkBuff
     }
 }
 
-agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst, VkDeviceSize size) {
+agfx_result_t command_buffer_begin(agfx_renderer_t *renderer, VkCommandBuffer* command_buffer)
+{
     VkCommandBufferAllocateInfo command_buffer_allocate_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -425,8 +440,7 @@ agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst,
         .commandBufferCount = 1
     };
 
-    VkCommandBuffer command_buffer;
-    if (VK_SUCCESS != vkAllocateCommandBuffers(renderer->context->device, &command_buffer_allocate_info, &command_buffer))
+    if (VK_SUCCESS != vkAllocateCommandBuffers(renderer->context->device, &command_buffer_allocate_info, command_buffer))
     {
         return AGFX_BUFFER_COPY_ERROR;
     }
@@ -436,11 +450,47 @@ agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
 
-    if (VK_SUCCESS != vkBeginCommandBuffer(command_buffer, &begin_info))
+    if (VK_SUCCESS != vkBeginCommandBuffer(*command_buffer, &begin_info))
     {
-        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, &command_buffer);
+        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, command_buffer);
         return AGFX_BUFFER_COPY_ERROR;
     }
+
+    return AGFX_SUCCESS;
+}
+
+agfx_result_t command_buffer_end(agfx_renderer_t *renderer, VkCommandBuffer *command_buffer)
+{
+    vkEndCommandBuffer(*command_buffer);
+
+    VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = command_buffer
+    };
+
+    if (VK_SUCCESS != vkQueueSubmit(renderer->context->graphics_queue, 1, &submit_info, 0))
+    {
+        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, command_buffer);
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    if (VK_SUCCESS != vkQueueWaitIdle(renderer->context->graphics_queue))
+    {
+        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, command_buffer);
+        return AGFX_BUFFER_COPY_ERROR;
+    }
+
+    vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, command_buffer);
+
+    return AGFX_SUCCESS;
+}
+
+agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst, VkDeviceSize size) {
+    agfx_result_t result = AGFX_SUCCESS;
+    VkCommandBuffer command_buffer;
+    result = command_buffer_begin(renderer, &command_buffer);
+    if (AGFX_SUCCESS != result) return result;
 
     VkBufferCopy buffer_copy = {
         .size = size
@@ -448,28 +498,41 @@ agfx_result_t copy_buffer(agfx_renderer_t *renderer, VkBuffer src, VkBuffer dst,
 
     vkCmdCopyBuffer(command_buffer, src, dst, 1, &buffer_copy);
 
-    vkEndCommandBuffer(command_buffer);
+    result = command_buffer_end(renderer, &command_buffer);
+    return result;
+}
 
-    VkSubmitInfo submit_info = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &command_buffer
+agfx_result_t copy_buffer_to_image(agfx_renderer_t *renderer, VkBuffer src, VkImage dst, uint32_t width, uint32_t height)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+    VkCommandBuffer command_buffer;
+    result = command_buffer_begin(renderer, &command_buffer);
+    if (AGFX_SUCCESS != result) return result;
+
+    VkBufferImageCopy region = {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = 0,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        },
+        .imageOffset = {
+            .x = 0, .y = 0, .z = 0
+        },
+        .imageExtent = {
+            .depth = 1,
+            .width = width,
+            .height = height
+        }
     };
 
-    if (VK_SUCCESS != vkQueueSubmit(renderer->context->graphics_queue, 1, &submit_info, 0))
-    {
-        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, &command_buffer);
-        return AGFX_BUFFER_COPY_ERROR;
-    }
+    vkCmdCopyBufferToImage(command_buffer, src, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    if (VK_SUCCESS != vkQueueWaitIdle(renderer->context->graphics_queue))
-    {
-        vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, &command_buffer);
-        return AGFX_BUFFER_COPY_ERROR;
-    }
-
-    vkFreeCommandBuffers(renderer->context->device, renderer->command_pool, 1, &command_buffer);
-    return AGFX_SUCCESS;
+    result = command_buffer_end(renderer, &command_buffer);
+    return result;
 }
 
 agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer)
@@ -570,20 +633,29 @@ agfx_result_t create_index_buffer(agfx_renderer_t *renderer)
 
 agfx_result_t create_descriptor_set_layout(agfx_renderer_t *renderer)
 {
-    VkDescriptorSetLayoutBinding ubo_layout_binding = {
-        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 1,
-        .binding = 0,
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+    VkDescriptorSetLayoutBinding bindings[AGFX_DESCRIPTOR_COUNT] = {
+        {
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .binding = 0,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+        },
+        {
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .binding = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = NULL,
+        }
     };
 
-    VkDescriptorSetLayoutCreateInfo ubo_layout_create_info = {
+    VkDescriptorSetLayoutCreateInfo layout_create_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &ubo_layout_binding
+        .bindingCount = AGFX_DESCRIPTOR_COUNT,
+        .pBindings = bindings
     };
 
-    if (VK_SUCCESS != vkCreateDescriptorSetLayout(renderer->context->device, &ubo_layout_create_info, NULL, &renderer->descriptor_set_layout))
+    if (VK_SUCCESS != vkCreateDescriptorSetLayout(renderer->context->device, &layout_create_info, NULL, &renderer->descriptor_set_layout))
     {
         return AGFX_DESCRIPTOR_SET_LAYOUT_ERROR;
     }
@@ -659,8 +731,17 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
     result = create_command_pool(&renderer);
     if (AGFX_SUCCESS != result) goto free_pipeline;
 
-    result = create_vertex_buffer(&renderer);
+    result = create_texture_image(&renderer);
     if (AGFX_SUCCESS != result) goto free_command_pool;
+
+    result = create_texture_image_view(&renderer);
+    if (AGFX_SUCCESS != result) goto free_texture_image;
+
+    result = create_texture_sampler(&renderer);
+    if (AGFX_SUCCESS != result) goto free_texture_image_view;
+
+    result = create_vertex_buffer(&renderer);
+    if (AGFX_SUCCESS != result) goto free_texture_sampler;
     
     result = create_index_buffer(&renderer);
     if (AGFX_SUCCESS != result) goto free_vertex_buffer;
@@ -671,7 +752,7 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
     result = create_descriptor_pool(&renderer);
     if (AGFX_SUCCESS != result) goto free_uniform_buffers;
 
-    result = create_descriptor_set(&renderer);
+    result = create_descriptor_sets(&renderer);
     if (AGFX_SUCCESS != result) goto free_descriptor_pool;
 
     result = create_command_buffers(&renderer);
@@ -687,7 +768,7 @@ free_sync_objects:
 free_command_buffers:
     free_command_buffers(&renderer);
 free_descriptor_set:
-    free_descriptor_set(&renderer);
+    free_descriptor_sets(&renderer);
 free_descriptor_pool:
     free_descriptor_pool(&renderer);
 free_uniform_buffers:
@@ -696,12 +777,18 @@ free_index_buffer:
     free_index_buffer(&renderer);
 free_vertex_buffer:
     free_vertex_buffer(&renderer);
+free_texture_sampler:
+    free_texture_sampler(&renderer);
+free_texture_image_view:
+    free_texture_image_view(&renderer);
+free_texture_image:
+    free_texture_image(&renderer);
 free_command_pool:
     free_command_pool(&renderer);
-free_render_pass:
-    free_render_pass(&renderer);
 free_pipeline:
     free_pipeline(&renderer);
+free_render_pass:
+    free_render_pass(&renderer);
 free_descriptor_set_layout:
     free_descriptor_set_layout(&renderer);
 finish:
@@ -713,7 +800,7 @@ void agfx_free_renderer(agfx_renderer_t *renderer)
 {
     free_sync_objects(renderer);
     free_command_buffers(renderer);
-    free_descriptor_set(renderer);
+    free_descriptor_sets(renderer);
     free_descriptor_pool(renderer);
     free_uniform_buffers(renderer);
     free_index_buffer(renderer);
@@ -722,6 +809,9 @@ void agfx_free_renderer(agfx_renderer_t *renderer)
     free_render_pass(renderer);
     free_pipeline(renderer);
     free_descriptor_set_layout(renderer);
+    free_texture_image(renderer);
+    free_texture_image_view(renderer);
+    free_texture_sampler(renderer);
 }
 
 // todo: refactor
@@ -798,7 +888,7 @@ void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
     agfx_uniform_buffer_object_t ubo = {
         .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
         .view = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
-        .projection = agfx_mat4x4_perspective(45.0f * M_PI / 180.f, 16.f / 9.f, 0.1f, 10.0f)
+        .projection = agfx_mat4x4_perspective(45.0f * M_PI / 180.f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
     };
 
     memcpy(renderer->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));
@@ -806,15 +896,21 @@ void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
 
 agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer)
 {
-    VkDescriptorPoolSize descriptor_pool_size = {
-        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+    VkDescriptorPoolSize descriptor_pool_sizes[AGFX_DESCRIPTOR_COUNT] = {
+        {
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+        },
+        {
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+        },
     };
 
     VkDescriptorPoolCreateInfo descriptor_pool_create_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .poolSizeCount = 1,
-        .pPoolSizes = &descriptor_pool_size,
+        .poolSizeCount = AGFX_DESCRIPTOR_COUNT,
+        .pPoolSizes = descriptor_pool_sizes,
         .maxSets = AGFX_MAX_FRAMES_IN_FLIGHT
     };
 
@@ -831,7 +927,7 @@ void free_descriptor_pool(agfx_renderer_t *renderer)
     vkDestroyDescriptorPool(renderer->context->device, renderer->descriptor_pool, NULL);
 }
 
-agfx_result_t create_descriptor_set(agfx_renderer_t *renderer)
+agfx_result_t create_descriptor_sets(agfx_renderer_t *renderer)
 {
     VkDescriptorSetLayout descriptor_set_layouts[AGFX_MAX_FRAMES_IN_FLIGHT] = {
         renderer->descriptor_set_layout,
@@ -860,23 +956,296 @@ agfx_result_t create_descriptor_set(agfx_renderer_t *renderer)
             .range = sizeof(agfx_uniform_buffer_object_t)
         };
 
-        VkWriteDescriptorSet write_descriptor_set = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = renderer->descriptor_sets[i],
-            .dstBinding = 0,
-            .dstArrayElement = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &descriptor_buffer_info,
+        VkDescriptorImageInfo descriptor_image_info = {
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = renderer->texture_image_view,
+            .sampler = renderer->texture_sampler,
         };
 
-        vkUpdateDescriptorSets(renderer->context->device, 1, &write_descriptor_set, 0, NULL);
+        VkWriteDescriptorSet write_descriptor_sets[AGFX_DESCRIPTOR_COUNT] = {
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = renderer->descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .pBufferInfo = &descriptor_buffer_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = renderer->descriptor_sets[i],
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .pImageInfo = &descriptor_image_info,
+            }
+        };
+        vkUpdateDescriptorSets(renderer->context->device, AGFX_DESCRIPTOR_COUNT, write_descriptor_sets, 0, NULL);
     }
 
     return AGFX_SUCCESS;
 }
 
-void free_descriptor_set(agfx_renderer_t *renderer)
+void free_descriptor_sets(agfx_renderer_t *renderer)
 {
     free(renderer->descriptor_sets);
+}
+
+// this file is becoming a mess, gotta refactor the crap out of this soon ._.
+// but so far i am kinda following the vulkan-tutorial, so imma think about this later
+
+agfx_result_t create_image(agfx_renderer_t *renderer, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkImage* image, VkDeviceMemory* image_memory)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+    VkImageCreateInfo image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .extent = {
+            .width = width,
+            .height = height,
+            .depth = 1
+        },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = format,
+        .tiling = tiling,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = usage_flags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .flags = 0
+    };
+
+    if (VK_SUCCESS != vkCreateImage(renderer->context->device, &image_create_info, NULL, image))
+    {
+        result = AGFX_IMAGE_CREATE_ERROR;
+        return result;
+    }
+
+    VkMemoryRequirements memory_requirements;
+    vkGetImageMemoryRequirements(renderer->context->device, *image, &memory_requirements);
+
+    VkMemoryAllocateInfo memory_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = find_vulkan_memory_type(renderer, memory_requirements.memoryTypeBits, property_flags)
+    };
+
+    if (VK_SUCCESS != vkAllocateMemory(renderer->context->device, &memory_allocate_info, NULL, image_memory)) 
+    {
+        result = AGFX_BUFFER_ERROR;
+        return result;
+    }
+
+    if (VK_SUCCESS != vkBindImageMemory(renderer->context->device, *image, *image_memory, 0))
+    {
+        result = AGFX_BUFFER_ERROR;
+        vkFreeMemory(renderer->context->device, *image_memory, NULL);
+        return result;
+    }
+
+    return result;
+}
+
+agfx_result_t create_texture_image(agfx_renderer_t *renderer)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+    SDL_Surface* original_image_surface = IMG_Load("./textures/test.png");
+    if (NULL == original_image_surface)
+    {
+        result = AGFX_IMAGE_LOAD_ERROR;
+        return result;
+    }
+
+    SDL_Surface* image_surface = SDL_ConvertSurfaceFormat(original_image_surface, SDL_PIXELFORMAT_RGBA8888, 0);
+    SDL_FreeSurface(original_image_surface);
+    if (NULL == image_surface)
+    {
+        result = AGFX_IMAGE_LOAD_ERROR;
+        return result;
+    }
+
+    VkDeviceSize image_size = image_surface->w * image_surface->h * image_surface->format->BytesPerPixel;
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    result = create_buffer(renderer, image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        SDL_FreeSurface(image_surface);
+        return result;
+    }
+    void* data;
+    result = vkMapMemory(renderer->context->device, staging_buffer_memory, 0, image_size, 0, &data);
+    if (AGFX_SUCCESS != result)
+    {
+        SDL_FreeSurface(image_surface);
+        vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+        return result;
+    }
+    memcpy(data, image_surface->pixels, image_size);
+    vkUnmapMemory(renderer->context->device, staging_buffer_memory);
+
+    result = create_image(renderer, image_surface->w, image_surface->h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &renderer->texture_image, &renderer->texture_image_memory);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        return result;
+    }
+
+    result = transition_image_layout(renderer, renderer->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        return result;
+    }
+
+    result = copy_buffer_to_image(renderer, staging_buffer, renderer->texture_image, image_surface->w, image_surface->h);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        return result;
+    }
+
+    result = transition_image_layout(renderer, renderer->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (AGFX_SUCCESS != result)
+    {
+        vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        return result;
+    }
+    
+    SDL_FreeSurface(image_surface);
+    vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
+    vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
+    return result;
+}
+
+void free_texture_image(agfx_renderer_t *renderer)
+{
+    vkDestroyImage(renderer->context->device, renderer->texture_image, NULL);
+    vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+}
+
+agfx_result_t transition_image_layout(agfx_renderer_t* renderer, VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+
+    VkCommandBuffer command_buffer;
+    result = command_buffer_begin(renderer, &command_buffer);
+    if (AGFX_SUCCESS != result) return result;
+
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+            .baseMipLevel = 0,
+            .levelCount = 1
+        },
+        .srcAccessMask = 0,
+        .dstAccessMask = 0
+    };
+
+    VkPipelineStageFlags source_stage;
+    VkPipelineStageFlags destination_stage;
+
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else
+    {
+        result = command_buffer_end(renderer, &command_buffer);
+        return AGFX_UNSUPPORTED_LAYOUT_TRANSITION_ERROR;
+    }
+
+    vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0, 0, NULL, 0, NULL, 1, &barrier);
+
+    result = command_buffer_end(renderer, &command_buffer);
+    return result;
+}
+
+agfx_result_t create_texture_image_view(agfx_renderer_t *renderer)
+{
+    VkImageViewCreateInfo image_view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = renderer->texture_image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_SRGB,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = 1,
+    };
+
+    if (VK_SUCCESS != vkCreateImageView(renderer->context->device, &image_view_create_info, NULL, &renderer->texture_image_view))
+    {
+        return AGFX_SWAPCHAIN_IMAGE_VIEW_ERROR;
+    }
+}
+
+void free_texture_image_view(agfx_renderer_t *renderer)
+{
+    vkDestroyImageView(renderer->context->device, renderer->texture_image_view, NULL);
+}
+
+agfx_result_t create_texture_sampler(agfx_renderer_t *renderer)
+{
+    VkPhysicalDeviceProperties device_properties = {};
+    vkGetPhysicalDeviceProperties(renderer->context->physical_device, &device_properties);
+    VkSamplerCreateInfo sampler_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,
+        .minFilter = VK_FILTER_LINEAR,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .anisotropyEnable = VK_TRUE,
+        .maxAnisotropy = device_properties.limits.maxSamplerAnisotropy,
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        .unnormalizedCoordinates = VK_FALSE,
+        .compareEnable = VK_FALSE,
+        .compareOp = VK_COMPARE_OP_ALWAYS,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .mipLodBias = 0.0f,
+        .minLod = 0.0f,
+        .maxLod = 0.0f
+    };
+
+    if (VK_SUCCESS != vkCreateSampler(renderer->context->device, &sampler_create_info, NULL, &renderer->texture_sampler))
+    {
+        return AGFX_SAMPLER_CREATE_ERROR;
+    }
+}
+
+void free_texture_sampler(agfx_renderer_t *renderer)
+{
+    vkDestroySampler(renderer->context->device, renderer->texture_sampler, NULL);
 }
