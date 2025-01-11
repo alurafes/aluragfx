@@ -109,27 +109,27 @@ void agfx_main(agfx_engine_t* engine)
         case SDL_KEYDOWN:
             if (event.key.keysym.sym == SDLK_LEFT) {
                 printf("z = %f\n", engine->state.rotation.z);
-                engine->state.rotation.z -= 0.02;
+                engine->state.rotation.z -= 0.1;
             }
             if (event.key.keysym.sym == SDLK_RIGHT) {
                  printf("z = %f\n", engine->state.rotation.z);
-                engine->state.rotation.z += 0.02;
+                engine->state.rotation.z += 0.1;
             }
             if (event.key.keysym.sym == SDLK_UP) {
                 printf("y = %f\n", engine->state.rotation.y);
-                engine->state.rotation.y -= 0.02;
+                engine->state.rotation.y -= 0.1;
             }
             if (event.key.keysym.sym == SDLK_DOWN) {
                  printf("y = %f\n", engine->state.rotation.y);
-                engine->state.rotation.y += 0.02;
+                engine->state.rotation.y += 0.1;
             }
             if (event.key.keysym.sym == SDLK_PAGEUP) {
                 printf("x = %f\n", engine->state.rotation.x);
-                engine->state.rotation.x -= 0.02;
+                engine->state.rotation.x -= 0.1;
             }
             if (event.key.keysym.sym == SDLK_PAGEDOWN) {
                  printf("x = %f\n", engine->state.rotation.x);
-                engine->state.rotation.x += 0.02;
+                engine->state.rotation.x += 0.1;
             }
             goto event_switch_end;
         }
