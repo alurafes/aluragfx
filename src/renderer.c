@@ -767,7 +767,7 @@ void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
     agfx_uniform_buffer_object_t ubo = {
         .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
         .view = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
-        .projection = agfx_mat4x4_perspective(70.0f * M_PI / 180.f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
+        .projection = agfx_mat4x4_perspective(renderer->state->camera_fov * M_PI / 180.f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
     };
 
     memcpy(renderer->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));

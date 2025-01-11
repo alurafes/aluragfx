@@ -10,7 +10,8 @@ agfx_result_t agfx_initialize_engine(agfx_engine_t* engine)
         .current_frame = 0,
         .quit = 0,
         .resized = 0,
-        .rotation = 0
+        .rotation = 0,
+        .camera_fov = 45.0f
     };
 
     agfx_create_present(&engine->present);
@@ -130,6 +131,14 @@ void agfx_main(agfx_engine_t* engine)
             if (event.key.keysym.sym == SDLK_PAGEDOWN) {
                  printf("x = %f\n", engine->state.rotation.x);
                 engine->state.rotation.x += 0.1;
+            }   
+            if (event.key.keysym.sym == SDLK_HOME) {
+                printf("camera_fov = %f\n", engine->state.camera_fov);
+                engine->state.camera_fov += 3.0f;
+            }
+            if (event.key.keysym.sym == SDLK_END) {
+                printf("camera_fov = %f\n", engine->state.camera_fov);
+                engine->state.camera_fov -= 3.0f;
             }
             goto event_switch_end;
         }
