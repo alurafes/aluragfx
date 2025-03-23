@@ -10,7 +10,7 @@ agfx_result_t agfx_initialize_engine(agfx_engine_t* engine)
         .current_frame = 0,
         .quit = 0,
         .resized = 0,
-        .rotation = 0,
+        .rotation = {0},
         .camera_fov = 45.0f
     };
 

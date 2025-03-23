@@ -315,6 +315,8 @@ agfx_result_t agfx_create_framebuffers(agfx_swapchain_t *swapchain)
         free_swapchain_image_views(swapchain);
         free_swapchain(swapchain);
     }
+
+    return result;
 }
 
 agfx_result_t create_depth_resources(agfx_swapchain_t *swapchain)

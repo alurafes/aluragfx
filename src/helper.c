@@ -11,6 +11,8 @@ uint32_t find_vulkan_memory_type(agfx_context_t *context, uint32_t type_filter, 
             return i;
         }
     }
+
+    return -1;
 }
 
 agfx_result_t agfx_helper_create_image(agfx_context_t *context, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage_flags, VkMemoryPropertyFlags property_flags, VkImage* image, VkDeviceMemory* image_memory)
@@ -205,6 +207,8 @@ agfx_result_t agfx_helper_create_buffer(agfx_context_t *context, VkDeviceSize si
         vkDestroyBuffer(context->device, *buffer, NULL);
         return AGFX_BUFFER_ERROR;
     }
+
+    return AGFX_SUCCESS;
 }
 
 agfx_result_t agfx_helper_create_image_view(agfx_context_t *context, VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, VkImageView *image_view)

@@ -40,6 +40,9 @@ agfx_result_t create_vulkan_instance(agfx_context_t* context)
         goto free_extensions;
     }
 
+    free(extensions);
+    goto finish;
+
 free_extensions:
     free(extensions);
 finish:

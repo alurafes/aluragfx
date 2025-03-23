@@ -177,10 +177,15 @@ agfx_result_t agfx_record_command_buffers(agfx_renderer_t *renderer, uint32_t im
     vkCmdSetViewportWithCount(renderer->command_buffers[renderer->state->current_frame], viewport_count, &viewport);
     vkCmdSetScissorWithCount(renderer->command_buffers[renderer->state->current_frame], scissor_count, &scissor);
     vkCmdBindPipeline(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline);
-    vkCmdBindVertexBuffers(renderer->command_buffers[renderer->state->current_frame], 0, 1, &renderer->vertex_buffer, &(VkDeviceSize){0});
-    vkCmdBindIndexBuffer(renderer->command_buffers[renderer->state->current_frame], renderer->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdBindDescriptorSets(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline_layout, 0, 1, &renderer->descriptor_sets[renderer->state->current_frame], 0, NULL);
-    vkCmdDrawIndexed(renderer->command_buffers[renderer->state->current_frame], AGFX_INDEX_ARRAY_SIZE, 1, 0, 0, 0);
+    
+    for (size_t i = 0; i < renderer->meshes_count; ++i)
+    {
+        agfx_mesh_t* mesh = &renderer->meshes[i];
+        vkCmdBindDescriptorSets(renderer->command_buffers[renderer->state->current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->pipeline_layout, 0, 1, &mesh->descriptor_sets[renderer->state->current_frame], 0, NULL);
+        vkCmdBindVertexBuffers(renderer->command_buffers[renderer->state->current_frame], 0, 1, &mesh->vertex_buffer, &(VkDeviceSize){0});
+        vkCmdBindIndexBuffer(renderer->command_buffers[renderer->state->current_frame], mesh->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(renderer->command_buffers[renderer->state->current_frame], mesh->indices_count, 1, 0, 0, 0);
+    }
 
 
     vkCmdEndRenderPass(renderer->command_buffers[renderer->state->current_frame]);
@@ -420,10 +425,10 @@ agfx_result_t create_sync_objects(agfx_renderer_t *renderer)
     return AGFX_SUCCESS;
 }
 
-agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer)
+agfx_result_t create_vertex_buffer_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
     agfx_result_t result;
-    size_t vertex_buffer_size = sizeof(agfx_vertices[0]) * AGFX_VERTEX_ARRAY_SIZE;
+    size_t vertex_buffer_size = sizeof(mesh->vertices[0]) * mesh->vertices_count;
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
@@ -441,10 +446,10 @@ agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer)
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
         return AGFX_VERTEX_BUFFER_ERROR;
     }
-    memcpy(buffer, agfx_vertices, vertex_buffer_size);
+    memcpy(buffer, mesh->vertices, vertex_buffer_size);
     vkUnmapMemory(renderer->context->device, staging_buffer_memory);
 
-    result = agfx_helper_create_buffer(renderer->context, vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &renderer->vertex_buffer, &renderer->vertex_buffer_memory);
+    result = agfx_helper_create_buffer(renderer->context, vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mesh->vertex_buffer, &mesh->vertex_buffer_memory);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
@@ -452,13 +457,13 @@ agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer)
         return result;
     }
 
-    result = agfx_helper_copy_buffer(renderer, staging_buffer, renderer->vertex_buffer, vertex_buffer_size);
+    result = agfx_helper_copy_buffer(renderer, staging_buffer, mesh->vertex_buffer, vertex_buffer_size);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->vertex_buffer_memory, NULL);
-        vkDestroyBuffer(renderer->context->device, renderer->vertex_buffer, NULL);
+        vkFreeMemory(renderer->context->device, mesh->vertex_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, mesh->vertex_buffer, NULL);
         return result;
     }
 
@@ -468,10 +473,10 @@ agfx_result_t create_vertex_buffer(agfx_renderer_t *renderer)
     return AGFX_SUCCESS;
 }
 
-agfx_result_t create_index_buffer(agfx_renderer_t *renderer)
+agfx_result_t create_index_buffer_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
     agfx_result_t result;
-    size_t index_buffer_size = sizeof(agfx_indices[0]) * AGFX_INDEX_ARRAY_SIZE;
+    size_t index_buffer_size = sizeof(mesh->indices[0]) * mesh->indices_count;
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
@@ -489,10 +494,10 @@ agfx_result_t create_index_buffer(agfx_renderer_t *renderer)
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
         return AGFX_INDEX_BUFFER_ERROR;
     }
-    memcpy(buffer, agfx_indices, index_buffer_size);
+    memcpy(buffer, mesh->indices, index_buffer_size);
     vkUnmapMemory(renderer->context->device, staging_buffer_memory);
 
-    result = agfx_helper_create_buffer(renderer->context, index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &renderer->index_buffer, &renderer->index_buffer_memory);
+    result = agfx_helper_create_buffer(renderer->context, index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mesh->index_buffer, &mesh->index_buffer_memory);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
@@ -500,13 +505,13 @@ agfx_result_t create_index_buffer(agfx_renderer_t *renderer)
         return result;
     }
 
-    result = agfx_helper_copy_buffer(renderer, staging_buffer, renderer->index_buffer, index_buffer_size);
+    result = agfx_helper_copy_buffer(renderer, staging_buffer, mesh->index_buffer, index_buffer_size);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->index_buffer_memory, NULL);
-        vkDestroyBuffer(renderer->context->device, renderer->index_buffer, NULL);
+        vkFreeMemory(renderer->context->device, mesh->index_buffer_memory, NULL);
+        vkDestroyBuffer(renderer->context->device, mesh->index_buffer, NULL);
         return result;
     }
 
@@ -545,6 +550,7 @@ agfx_result_t create_descriptor_set_layout(agfx_renderer_t *renderer)
         return AGFX_DESCRIPTOR_SET_LAYOUT_ERROR;
     }
 
+    return AGFX_SUCCESS;
 }
 
 void free_descriptor_set_layout(agfx_renderer_t *renderer) 
@@ -583,16 +589,16 @@ void free_sync_objects(agfx_renderer_t *renderer)
     }
 }
 
-void free_vertex_buffer(agfx_renderer_t *renderer)
+void free_vertex_buffer_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    vkDestroyBuffer(renderer->context->device, renderer->vertex_buffer, NULL);
-    vkFreeMemory(renderer->context->device, renderer->vertex_buffer_memory, NULL);
+    vkDestroyBuffer(renderer->context->device, mesh->vertex_buffer, NULL);
+    vkFreeMemory(renderer->context->device, mesh->vertex_buffer_memory, NULL);
 }
 
-void free_index_buffer(agfx_renderer_t *renderer)
+void free_index_buffer_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    vkDestroyBuffer(renderer->context->device, renderer->index_buffer, NULL);
-    vkFreeMemory(renderer->context->device, renderer->index_buffer_memory, NULL);
+    vkDestroyBuffer(renderer->context->device, mesh->index_buffer, NULL);
+    vkFreeMemory(renderer->context->device, mesh->index_buffer_memory, NULL);
 }
 
 agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* swapchain, agfx_state_t* state, agfx_renderer_t* out_renderer)
@@ -616,26 +622,11 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
     result = create_command_pool(&renderer);
     if (AGFX_SUCCESS != result) goto free_pipeline;
 
-    result = create_texture_image(&renderer);
+    result = load_model(&renderer);
     if (AGFX_SUCCESS != result) goto free_command_pool;
 
-    result = create_texture_image_view(&renderer);
-    if (AGFX_SUCCESS != result) goto free_texture_image;
-
-    result = create_texture_sampler(&renderer);
-    if (AGFX_SUCCESS != result) goto free_texture_image_view;
-
-    result = create_vertex_buffer(&renderer);
-    if (AGFX_SUCCESS != result) goto free_texture_sampler;
-    
-    result = create_index_buffer(&renderer);
-    if (AGFX_SUCCESS != result) goto free_vertex_buffer;
-
-    result = create_uniform_buffers(&renderer);
-    if (AGFX_SUCCESS != result) goto free_index_buffer;
-
     result = create_descriptor_pool(&renderer);
-    if (AGFX_SUCCESS != result) goto free_uniform_buffers;
+    if (AGFX_SUCCESS != result) goto free_model;
 
     result = create_descriptor_sets(&renderer);
     if (AGFX_SUCCESS != result) goto free_descriptor_pool;
@@ -648,26 +639,14 @@ agfx_result_t agfx_create_renderer(agfx_context_t* context, agfx_swapchain_t* sw
 
 goto finish;
 
-free_sync_objects:
-    free_sync_objects(&renderer);
+// free_sync_objects:
+//     free_sync_objects(&renderer);
 free_command_buffers:
     free_command_buffers(&renderer);
 free_descriptor_set:
     free_descriptor_sets(&renderer);
 free_descriptor_pool:
     free_descriptor_pool(&renderer);
-free_uniform_buffers:
-    free_uniform_buffers(&renderer);
-free_index_buffer:
-    free_index_buffer(&renderer);
-free_vertex_buffer:
-    free_vertex_buffer(&renderer);
-free_texture_sampler:
-    free_texture_sampler(&renderer);
-free_texture_image_view:
-    free_texture_image_view(&renderer);
-free_texture_image:
-    free_texture_image(&renderer);
 free_command_pool:
     free_command_pool(&renderer);
 free_pipeline:
@@ -676,6 +655,8 @@ free_render_pass:
     free_render_pass(&renderer);
 free_descriptor_set_layout:
     free_descriptor_set_layout(&renderer);
+free_model:
+    free_model(&renderer);
 finish:
     *out_renderer = renderer;
     return result;
@@ -687,27 +668,23 @@ void agfx_free_renderer(agfx_renderer_t *renderer)
     free_command_buffers(renderer);
     free_descriptor_sets(renderer);
     free_descriptor_pool(renderer);
-    free_uniform_buffers(renderer);
-    free_index_buffer(renderer);
-    free_vertex_buffer(renderer);
     free_command_pool(renderer);
     free_render_pass(renderer);
     free_pipeline(renderer);
     free_descriptor_set_layout(renderer);
-    free_texture_image(renderer);
-    free_texture_image_view(renderer);
-    free_texture_sampler(renderer);
+    free_model(renderer);
 }
 
 // todo: refactor
 // todo: malloc result checks
-agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer)
+agfx_result_t create_uniform_buffers_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    renderer->uniform_buffers = malloc(sizeof(VkBuffer) * AGFX_MAX_FRAMES_IN_FLIGHT);
-    renderer->uniform_buffer_memories = malloc(sizeof(VkDeviceMemory) * AGFX_MAX_FRAMES_IN_FLIGHT);
-    renderer->uniform_buffer_mapped = malloc(sizeof(void*) * AGFX_MAX_FRAMES_IN_FLIGHT);
-
     agfx_result_t result = AGFX_SUCCESS;
+
+    mesh->uniform_buffers = malloc(sizeof(VkBuffer) * AGFX_MAX_FRAMES_IN_FLIGHT);
+    mesh->uniform_buffer_memories = malloc(sizeof(VkDeviceMemory) * AGFX_MAX_FRAMES_IN_FLIGHT);
+    mesh->uniform_buffer_mapped = malloc(sizeof(void*) * AGFX_MAX_FRAMES_IN_FLIGHT);
+
     for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; ++i)
     {
         result = agfx_helper_create_buffer(
@@ -715,8 +692,8 @@ agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer)
             sizeof(agfx_uniform_buffer_object_t), 
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-            &renderer->uniform_buffers[i], 
-            &renderer->uniform_buffer_memories[i]
+            &mesh->uniform_buffers[i], 
+            &mesh->uniform_buffer_memories[i]
         );
 
         if (AGFX_SUCCESS != result)
@@ -724,7 +701,7 @@ agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer)
             goto free;
         }
 
-        if (VK_SUCCESS != vkMapMemory(renderer->context->device, renderer->uniform_buffer_memories[i], 0, sizeof(agfx_uniform_buffer_object_t), 0, &renderer->uniform_buffer_mapped[i]))
+        if (VK_SUCCESS != vkMapMemory(renderer->context->device, mesh->uniform_buffer_memories[i], 0, sizeof(agfx_uniform_buffer_object_t), 0, &mesh->uniform_buffer_mapped[i]))
         {
             result = AGFX_BUFFER_MAP_ERROR;
         }
@@ -735,42 +712,48 @@ agfx_result_t create_uniform_buffers(agfx_renderer_t *renderer)
         if (i > 0) {
             for (size_t j = 0; j < i; ++j)
             {
-                vkDestroyBuffer(renderer->context->device, renderer->uniform_buffers[j], NULL);
-                vkFreeMemory(renderer->context->device, renderer->uniform_buffer_memories[j], NULL);
+                vkDestroyBuffer(renderer->context->device, mesh->uniform_buffers[j], NULL);
+                vkFreeMemory(renderer->context->device, mesh->uniform_buffer_memories[j], NULL);
             }
         }
-        free(renderer->uniform_buffers);
-        free(renderer->uniform_buffer_memories);
-        free(renderer->uniform_buffer_mapped);
+        free(mesh->uniform_buffers);
+        free(mesh->uniform_buffer_memories);
+        free(mesh->uniform_buffer_mapped);
         return result;
 
         finish:
     }
+
     return result;
 }
 
-void free_uniform_buffers(agfx_renderer_t *renderer)
+void free_uniform_buffers_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
     for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        vkDestroyBuffer(renderer->context->device, renderer->uniform_buffers[i], NULL);
-        vkFreeMemory(renderer->context->device, renderer->uniform_buffer_memories[i], NULL);
+        vkDestroyBuffer(renderer->context->device, mesh->uniform_buffers[i], NULL);
+        vkFreeMemory(renderer->context->device, mesh->uniform_buffer_memories[i], NULL);
     }
 
-    free(renderer->uniform_buffers);
-    free(renderer->uniform_buffer_memories);
-    free(renderer->uniform_buffer_mapped);
+    free(mesh->uniform_buffers);
+    free(mesh->uniform_buffer_memories);
+    free(mesh->uniform_buffer_mapped);
 }
 
 void agfx_update_uniform_buffer(agfx_renderer_t *renderer)
 {
-    agfx_uniform_buffer_object_t ubo = {
-        .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
-        .view = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 2.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
-        .projection = agfx_mat4x4_perspective(renderer->state->camera_fov * M_PI / 180.f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
-    };
+    for (size_t mesh_index = 0; mesh_index < renderer->meshes_count; ++mesh_index)
+    {
+        agfx_mesh_t* mesh = &renderer->meshes[mesh_index];
+        agfx_uniform_buffer_object_t ubo = {
+            .model = agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_multiplied_by_mat4x4(agfx_mat4x4_translation((agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 0.0f}), agfx_mat4x4_rotation_euler(renderer->state->rotation)), agfx_mat4x4_scale((agfx_vector3_t) {.x = 1.0f, .y = 1.0f, .z = 1.0f})),
+            .view = agfx_mat4x4_look_at((agfx_vector3_t) {.x = 2.0f, .y = 2.0f, .z = 3.0f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.9f}, (agfx_vector3_t) {.x = 0.0f, .y = 0.0f, .z = 1.0f}),
+            .projection = agfx_mat4x4_perspective(renderer->state->camera_fov * M_PI / 180.f, renderer->swapchain->swapchain_extent.width / (float) renderer->swapchain->swapchain_extent.height, 0.1f, 10.0f)
+        };
 
-    memcpy(renderer->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));
+        memcpy(mesh->uniform_buffer_mapped[renderer->state->current_frame], &ubo, sizeof(ubo));
+    }
+
 }
 
 agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer)
@@ -778,11 +761,11 @@ agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer)
     VkDescriptorPoolSize descriptor_pool_sizes[AGFX_DESCRIPTOR_COUNT] = {
         {
             .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT * renderer->meshes_count
         },
         {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT
+            .descriptorCount = AGFX_MAX_FRAMES_IN_FLIGHT * renderer->meshes_count // so far 1 mesh = 1 texture. In the future imma do something about it. Right now I am desperate to see a bunch of textured cubes and pyramids ;-;
         },
     };
 
@@ -790,7 +773,7 @@ agfx_result_t create_descriptor_pool(agfx_renderer_t *renderer)
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = AGFX_DESCRIPTOR_COUNT,
         .pPoolSizes = descriptor_pool_sizes,
-        .maxSets = AGFX_MAX_FRAMES_IN_FLIGHT
+        .maxSets = AGFX_MAX_FRAMES_IN_FLIGHT * renderer->meshes_count 
     };
 
     if (VK_SUCCESS != vkCreateDescriptorPool(renderer->context->device, &descriptor_pool_create_info, NULL, &renderer->descriptor_pool))
@@ -820,48 +803,53 @@ agfx_result_t create_descriptor_sets(agfx_renderer_t *renderer)
         .pSetLayouts = descriptor_set_layouts
     };
 
-    renderer->descriptor_sets = malloc(sizeof(VkDescriptorSet) * AGFX_MAX_FRAMES_IN_FLIGHT);
-
-    if (VK_SUCCESS != vkAllocateDescriptorSets(renderer->context->device, &descriptor_set_allocate_info, renderer->descriptor_sets))
+    for (size_t mesh_index = 0; mesh_index < renderer->meshes_count; ++mesh_index)
     {
-        free(renderer->descriptor_sets);
-        return AGFX_DESCRIPTOR_SET_ERROR;
-    }
+        agfx_mesh_t* mesh = &renderer->meshes[mesh_index];
 
-    for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; i++) {
-        VkDescriptorBufferInfo descriptor_buffer_info = {
-            .buffer = renderer->uniform_buffers[i],
-            .offset = 0,
-            .range = sizeof(agfx_uniform_buffer_object_t)
-        };
+        mesh->descriptor_sets = malloc(sizeof(VkDescriptorSet) * AGFX_MAX_FRAMES_IN_FLIGHT);
 
-        VkDescriptorImageInfo descriptor_image_info = {
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .imageView = renderer->texture_image_view,
-            .sampler = renderer->texture_sampler,
-        };
+        if (VK_SUCCESS != vkAllocateDescriptorSets(renderer->context->device, &descriptor_set_allocate_info, mesh->descriptor_sets))
+        {
+            free(mesh->descriptor_sets);
+            return AGFX_DESCRIPTOR_SET_ERROR;
+        }
 
-        VkWriteDescriptorSet write_descriptor_sets[AGFX_DESCRIPTOR_COUNT] = {
-            {
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = renderer->descriptor_sets[i],
-                .dstBinding = 0,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .pBufferInfo = &descriptor_buffer_info,
-            },
-            {
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = renderer->descriptor_sets[i],
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
-                .pImageInfo = &descriptor_image_info,
-            }
-        };
-        vkUpdateDescriptorSets(renderer->context->device, AGFX_DESCRIPTOR_COUNT, write_descriptor_sets, 0, NULL);
+        for (size_t i = 0; i < AGFX_MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo descriptor_buffer_info = {
+                .buffer = mesh->uniform_buffers[i],
+                .offset = 0,
+                .range = sizeof(agfx_uniform_buffer_object_t)
+            };
+
+            VkDescriptorImageInfo descriptor_image_info = {
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = mesh->texture_image_view,
+                .sampler = mesh->texture_sampler,
+            };
+
+            VkWriteDescriptorSet write_descriptor_sets[AGFX_DESCRIPTOR_COUNT] = {
+                {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = mesh->descriptor_sets[i],
+                    .dstBinding = 0,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .pBufferInfo = &descriptor_buffer_info,
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = mesh->descriptor_sets[i],
+                    .dstBinding = 1,
+                    .dstArrayElement = 0,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                    .descriptorCount = 1,
+                    .pImageInfo = &descriptor_image_info,
+                }
+            };
+            vkUpdateDescriptorSets(renderer->context->device, AGFX_DESCRIPTOR_COUNT, write_descriptor_sets, 0, NULL);
+        }
     }
 
     return AGFX_SUCCESS;
@@ -869,16 +857,20 @@ agfx_result_t create_descriptor_sets(agfx_renderer_t *renderer)
 
 void free_descriptor_sets(agfx_renderer_t *renderer)
 {
-    free(renderer->descriptor_sets);
+    for (size_t mesh_index = 0; mesh_index < renderer->meshes_count; ++mesh_index)
+    {
+        agfx_mesh_t* mesh = &renderer->meshes[mesh_index];
+        free(mesh->descriptor_sets);
+    }
 }
 
 // this file is becoming a mess, gotta refactor the crap out of this soon ._.
 // but so far i am kinda following the vulkan-tutorial, so imma think about this later
 
-agfx_result_t create_texture_image(agfx_renderer_t *renderer)
+agfx_result_t create_texture_image_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh, void* raw_image_data, size_t raw_image_data_size)
 {
     agfx_result_t result = AGFX_SUCCESS;
-    SDL_Surface* original_image_surface = IMG_Load("./textures/test.png");
+    SDL_Surface* original_image_surface = IMG_Load_RW(SDL_RWFromConstMem(raw_image_data, raw_image_data_size), 1);
     if (NULL == original_image_surface)
     {
         result = AGFX_IMAGE_LOAD_ERROR;
@@ -914,39 +906,39 @@ agfx_result_t create_texture_image(agfx_renderer_t *renderer)
     memcpy(data, image_surface->pixels, image_size);
     vkUnmapMemory(renderer->context->device, staging_buffer_memory);
 
-    result = agfx_helper_create_image(renderer->context, image_surface->w, image_surface->h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &renderer->texture_image, &renderer->texture_image_memory);
+    result = agfx_helper_create_image(renderer->context, image_surface->w, image_surface->h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mesh->texture_image, &mesh->texture_image_memory);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        vkFreeMemory(renderer->context->device, mesh->texture_image_memory, NULL);
         return result;
     }
 
-    result = agfx_helper_transition_image_layout(renderer, renderer->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    result = agfx_helper_transition_image_layout(renderer, mesh->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        vkFreeMemory(renderer->context->device, mesh->texture_image_memory, NULL);
         return result;
     }
 
-    result = agfx_helper_copy_buffer_to_image(renderer, staging_buffer, renderer->texture_image, image_surface->w, image_surface->h);
+    result = agfx_helper_copy_buffer_to_image(renderer, staging_buffer, mesh->texture_image, image_surface->w, image_surface->h);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        vkFreeMemory(renderer->context->device, mesh->texture_image_memory, NULL);
         return result;
     }
 
-    result = agfx_helper_transition_image_layout(renderer, renderer->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    result = agfx_helper_transition_image_layout(renderer, mesh->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     if (AGFX_SUCCESS != result)
     {
         vkFreeMemory(renderer->context->device, staging_buffer_memory, NULL);
         vkDestroyBuffer(renderer->context->device, staging_buffer, NULL);
-        vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+        vkFreeMemory(renderer->context->device, mesh->texture_image_memory, NULL);
         return result;
     }
     
@@ -956,23 +948,23 @@ agfx_result_t create_texture_image(agfx_renderer_t *renderer)
     return result;
 }
 
-void free_texture_image(agfx_renderer_t *renderer)
+void free_texture_image_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    vkDestroyImage(renderer->context->device, renderer->texture_image, NULL);
-    vkFreeMemory(renderer->context->device, renderer->texture_image_memory, NULL);
+    vkDestroyImage(renderer->context->device, mesh->texture_image, NULL);
+    vkFreeMemory(renderer->context->device, mesh->texture_image_memory, NULL);
 }
 
-agfx_result_t create_texture_image_view(agfx_renderer_t *renderer)
+agfx_result_t create_texture_image_view_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    return agfx_helper_create_image_view(renderer->context, renderer->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, &renderer->texture_image_view);
+    return agfx_helper_create_image_view(renderer->context, mesh->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, &mesh->texture_image_view);
 }
 
-void free_texture_image_view(agfx_renderer_t *renderer)
+void free_texture_image_view_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    vkDestroyImageView(renderer->context->device, renderer->texture_image_view, NULL);
+    vkDestroyImageView(renderer->context->device, mesh->texture_image_view, NULL);
 }
 
-agfx_result_t create_texture_sampler(agfx_renderer_t *renderer)
+agfx_result_t create_texture_sampler_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
     VkPhysicalDeviceProperties device_properties = {};
     vkGetPhysicalDeviceProperties(renderer->context->physical_device, &device_properties);
@@ -995,13 +987,126 @@ agfx_result_t create_texture_sampler(agfx_renderer_t *renderer)
         .maxLod = 0.0f
     };
 
-    if (VK_SUCCESS != vkCreateSampler(renderer->context->device, &sampler_create_info, NULL, &renderer->texture_sampler))
+    if (VK_SUCCESS != vkCreateSampler(renderer->context->device, &sampler_create_info, NULL, &mesh->texture_sampler))
     {
         return AGFX_SAMPLER_CREATE_ERROR;
     }
+
+    return AGFX_SUCCESS;
 }
 
-void free_texture_sampler(agfx_renderer_t *renderer)
+void free_texture_sampler_for_mesh(agfx_renderer_t *renderer, agfx_mesh_t* mesh)
 {
-    vkDestroySampler(renderer->context->device, renderer->texture_sampler, NULL);
+    vkDestroySampler(renderer->context->device, mesh->texture_sampler, NULL);
+}
+
+agfx_result_t load_model(agfx_renderer_t *renderer)
+{
+    agfx_result_t result = AGFX_SUCCESS;
+
+    agltf_glb_t model;
+
+    agltf_result_t model_result = agltf_create_glb("./models/test.glb", &model);
+    if (model_result != AGLTF_SUCCESS) return AGFX_MODEL_LOAD_ERROR;
+
+    renderer->meshes_count = 0;
+
+    for (size_t mesh_index = 0; mesh_index < model.meshes_count; ++mesh_index)
+    {
+        renderer->meshes_count += model.meshes[mesh_index].primitives_count;
+    }
+
+    renderer->meshes = calloc(renderer->meshes_count, sizeof(agfx_mesh_t));
+
+    size_t engine_mesh_index = 0;
+    for (size_t mesh_index = 0; mesh_index < model.meshes_count; ++mesh_index)
+    {
+        agltf_json_mesh_t* mesh = &model.meshes[mesh_index];
+        for (size_t primitive_index = 0; primitive_index < mesh->primitives_count; ++primitive_index)
+        {
+            agfx_mesh_t* engine_mesh = &renderer->meshes[engine_mesh_index];
+            agltf_json_mesh_primitive_t* primitive = &mesh->primitives[primitive_index];
+            
+            engine_mesh->indices_count = primitive->indices->count;
+            engine_mesh->indices = calloc(engine_mesh->indices_count, sizeof(uint32_t));
+
+            void* starting_point = primitive->indices->data.data;
+            void* ending_point = starting_point + primitive->indices->data.size;
+            for (void* current = starting_point; current != ending_point; current += primitive->indices->data.size_of_element)
+            {
+                size_t index = (current - starting_point) / primitive->indices->data.size_of_element;
+                switch (primitive->indices->component_type)
+                {
+                    case AGLTF_JSON_COMPONENT_TYPE_UNSIGNED_BYTE: engine_mesh->indices[index] = *(uint8_t*)current; goto after_component_type_switch;
+                    case AGLTF_JSON_COMPONENT_TYPE_UNSIGNED_SHORT: engine_mesh->indices[index] = *(uint16_t*)current; goto after_component_type_switch;
+                    case AGLTF_JSON_COMPONENT_TYPE_UNSIGNED_INT: engine_mesh->indices[index] = *(uint32_t*)current; goto after_component_type_switch;
+                }
+                after_component_type_switch:
+            }
+
+            for (size_t attribute_index = 0; attribute_index < primitive->attribute_count; ++attribute_index)
+            {
+                agltf_json_mesh_primitive_attribute_t* attribute = &primitive->attributes[attribute_index];
+                if (strcmp("POSITION", attribute->name) == 0)
+                {
+                    if (attribute->accessor->data.number_of_components != 3)
+                    {
+                        return AGFX_MODEL_LOAD_ERROR;
+                    }
+                    engine_mesh->vertices_count = attribute->accessor->count;
+                    engine_mesh->vertices = calloc(engine_mesh->vertices_count, sizeof(agfx_vertex_t));
+
+                    float* starting_point = (float*)attribute->accessor->data.data;
+                    float* ending_point = starting_point + (attribute->accessor->data.size / sizeof(float));
+                    for (float* current = starting_point; current != ending_point; current += attribute->accessor->data.number_of_components)
+                    {
+                        int vertex_index = (current - starting_point) / attribute->accessor->data.number_of_components;
+                        engine_mesh->vertices[vertex_index].position.x = *current;
+                        engine_mesh->vertices[vertex_index].position.y = *(current + 1);
+                        engine_mesh->vertices[vertex_index].position.z = *(current + 2);
+                    }
+                }
+                if (strcmp("TEXCOORD_0", attribute->name) == 0)
+                {
+                    if (attribute->accessor->data.number_of_components != 2)
+                    {
+                        return AGFX_MODEL_LOAD_ERROR;
+                    }
+                    float* starting_point = (float*)attribute->accessor->data.data;
+                    float* ending_point = starting_point + (attribute->accessor->data.size / sizeof(float));
+                    for (float* current = starting_point; current != ending_point; current += attribute->accessor->data.number_of_components)
+                    {
+                        int vertex_index = (current - starting_point) / attribute->accessor->data.number_of_components;
+                        engine_mesh->vertices[vertex_index].texture_coordinate.x = *current;
+                        engine_mesh->vertices[vertex_index].texture_coordinate.y = *(current + 1);
+                    }
+                }
+            }
+
+            create_index_buffer_for_mesh(renderer, engine_mesh);
+            create_vertex_buffer_for_mesh(renderer, engine_mesh);
+            create_texture_image_for_mesh(renderer, engine_mesh, mesh->primitives->material->pbr.base_color_texture.texture->source->data.data, mesh->primitives->material->pbr.base_color_texture.texture->source->data.size);
+            create_texture_image_view_for_mesh(renderer, engine_mesh);
+            create_texture_sampler_for_mesh(renderer, engine_mesh);
+            create_uniform_buffers_for_mesh(renderer, engine_mesh);
+            engine_mesh_index++;
+        }
+    }
+
+    agltf_free_glb(&model);
+
+    return result;
+}
+
+void free_model(agfx_renderer_t *renderer)
+{
+    for (size_t i = 0; i < renderer->meshes_count; ++i)
+    {
+        free_index_buffer_for_mesh(renderer, &renderer->meshes[i]);
+        free_vertex_buffer_for_mesh(renderer, &renderer->meshes[i]);
+        free_texture_image_for_mesh(renderer, &renderer->meshes[i]);
+        free_texture_image_view_for_mesh(renderer, &renderer->meshes[i]);
+        free_texture_sampler_for_mesh(renderer, &renderer->meshes[i]);
+        free_uniform_buffers_for_mesh(renderer, &renderer->meshes[i]);
+    }
 }

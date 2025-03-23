@@ -41,6 +41,7 @@ typedef enum agfx_result_t {
     AGFX_IMAGE_CREATE_ERROR,
     AGFX_UNSUPPORTED_LAYOUT_TRANSITION_ERROR,
     AGFX_SAMPLER_CREATE_ERROR,
+    AGFX_MODEL_LOAD_ERROR,
 } agfx_result_t;
 
 #define AGFX_QUEUE_FAMILY_INDICES_LENGTH sizeof(agfx_queue_family_indices_t) / sizeof(uint32_t)
@@ -56,6 +57,12 @@ typedef struct agfx_swapchain_info_t {
     uint32_t present_modes_count;
     VkPresentModeKHR* present_modes;
 } agfx_swapchain_info_t;
+
+typedef struct agfx_vertex_t {
+    agfx_vector3_t position;
+    agfx_vector3_t color;
+    agfx_vector2_t texture_coordinate;
+} agfx_vertex_t;
 
 typedef struct agfx_present_t {
     SDL_Window* window;
@@ -100,14 +107,31 @@ typedef struct agfx_state_t {
     float camera_fov;
 } agfx_state_t;
 
-typedef struct agfx_renderer_t {
-    agfx_context_t* context;
-    agfx_swapchain_t* swapchain;
-    agfx_state_t* state;
+typedef struct agfx_mesh_t {
+    size_t vertices_count;
+    agfx_vertex_t* vertices;
+    size_t indices_count;
+    uint32_t* indices;
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
     VkBuffer index_buffer;
     VkDeviceMemory index_buffer_memory;
+    VkImage texture_image;
+    VkDeviceMemory texture_image_memory;
+    VkImageView texture_image_view;
+    VkSampler texture_sampler;
+    void* image_data;
+    size_t image_size;
+    VkBuffer* uniform_buffers;
+    VkDeviceMemory* uniform_buffer_memories;
+    void** uniform_buffer_mapped;
+    VkDescriptorSet* descriptor_sets;
+} agfx_mesh_t;
+
+typedef struct agfx_renderer_t {
+    agfx_context_t* context;
+    agfx_swapchain_t* swapchain;
+    agfx_state_t* state;
     VkPipelineLayout pipeline_layout;
     VkRenderPass render_pass;
     VkPipeline pipeline;
@@ -116,16 +140,10 @@ typedef struct agfx_renderer_t {
     VkSemaphore *image_available_semaphores;
     VkSemaphore *render_finished_semaphores;
     VkFence *in_flight_fences;
-    VkBuffer* uniform_buffers;
-    VkDeviceMemory* uniform_buffer_memories;
-    void** uniform_buffer_mapped;
     VkDescriptorSetLayout descriptor_set_layout;
     VkDescriptorPool descriptor_pool;
-    VkDescriptorSet* descriptor_sets;
-    VkImage texture_image;
-    VkDeviceMemory texture_image_memory;
-    VkImageView texture_image_view;
-    VkSampler texture_sampler;
+    size_t meshes_count;
+    agfx_mesh_t* meshes;
 } agfx_renderer_t;
 
 typedef struct agfx_engine_t {
@@ -141,11 +159,5 @@ typedef struct agfx_uniform_buffer_object_t {
     agfx_mat4x4_t view;
     agfx_mat4x4_t projection;
 } agfx_uniform_buffer_object_t;
-
-typedef struct agfx_vertex_t {
-    agfx_vector3_t position;
-    agfx_vector3_t color;
-    agfx_vector2_t texture_coordinate;
-} agfx_vertex_t;
 
 #endif

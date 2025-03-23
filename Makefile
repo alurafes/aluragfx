@@ -13,6 +13,8 @@ test:
 	./src/helper.c \
 	./src/math/matrix.c \
 	./src/math/vector.c \
+	./libs/aluragltf/src/glb.c \
+	./libs/aluragltf/src/utils.c \
 	-g \
 	-lmingw32 \
 	-lSDL2main \
@@ -24,9 +26,14 @@ test:
 	-IE:\cpplibs\sdl2-x86_64-w64-mingw32\include\SDL2 \
 	-IE:\cpplibs\sdl2_image-x86_64-w64-mingw32\include \
 	-IC:\VulkanSDK\1.3.275.0\Include \
+	-I./libs \
 	-LC:\VulkanSDK\1.3.275.0\Lib \
 	-LE:\cpplibs\sdl2-x86_64-w64-mingw32\lib \
-	-LE:\cpplibs\sdl2_image-x86_64-w64-mingw32\lib
+	-LE:\cpplibs\sdl2_image-x86_64-w64-mingw32\lib \
+	-IE:/cpplibs/cJSON/usr/include \
+	-LE:/cpplibs/cJSON/usr/lib \
+	-lcjson \
+	-Wall
 
 clean:
 	rm main.exe
